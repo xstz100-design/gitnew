@@ -50,9 +50,16 @@
             <el-icon><list /></el-icon>
             <span>{{ $t('admin.orders') }}</span>
           </el-menu-item>
+          <el-menu-item index="/admin/picking">
+            <el-icon><box /></el-icon>
+            <span>{{ $t('picker.title') }}</span>
+          </el-menu-item>
           <el-menu-item index="/admin/merchants">
             <el-icon><user /></el-icon>
-            <span>{{ $t('admin.merchants') }}</span>
+            <template #title>
+              <span>{{ $t('admin.merchants') }}</span>
+              <el-badge v-if="pendingCount > 0" :value="pendingCount" class="menu-badge" />
+            </template>
           </el-menu-item>
           <el-menu-item index="/admin/categories">
             <el-icon><menu /></el-icon>
@@ -62,10 +69,14 @@
             <el-icon><bell /></el-icon>
             <span>{{ $t('admin.announcements') }}</span>
           </el-menu-item>
+          <el-menu-item index="/admin/settings">
+            <el-icon><setting /></el-icon>
+            <span>{{ $t('settings.title') }}</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
       
-      <el-main :style="mobile ? { 'padding-bottom': '60px' } : {}">
+      <el-main :style="mobile ? mobileMainStyle : {}">
         <router-view />
       </el-main>
     </el-container>
@@ -124,10 +135,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { ArrowDown, DataAnalysis, Goods, List, User, Menu, Bell, MoreFilled, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowDown, DataAnalysis, Goods, List, User, Menu, Bell, MoreFilled, SwitchButton, Box, Setting } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
+import { getPendingCount } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -136,6 +148,15 @@ const { t } = useI18n()
 const currentLang = ref(getCurrentLanguage())
 const mobile = ref(window.innerWidth < 768)
 const showMore = ref(false)
+const pendingCount = ref(0)
+let pendingTimer = null
+
+const mobileMainStyle = computed(() => ({
+  paddingTop: `calc(46px + var(--tg-content-safe-area-inset-top, 0px))`,
+  paddingBottom: `calc(60px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))`,
+  paddingLeft: 'var(--tg-content-safe-area-inset-left, 0px)',
+  paddingRight: 'var(--tg-content-safe-area-inset-right, 0px)',
+}))
 
 const isMoreActive = computed(() => {
   return ['/admin/categories', '/admin/announcements'].includes(route.path)
@@ -145,12 +166,27 @@ const onResize = () => {
   mobile.value = window.innerWidth < 768
 }
 
+const loadPendingCount = async () => {
+  try {
+    const data = await getPendingCount()
+    pendingCount.value = data.count
+  } catch (error) {
+    // 静默失败
+  }
+}
+
 onMounted(() => {
   window.addEventListener('resize', onResize)
+  loadPendingCount()
+  // 定时刷新待审核数量(每60秒)
+  pendingTimer = setInterval(loadPendingCount, 60000)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', onResize)
+  if (pendingTimer) {
+    clearInterval(pendingTimer)
+  }
 })
 
 const toggleLang = () => {
@@ -187,7 +223,7 @@ const handleCommand = (command) => {
 
 <style scoped>
 .admin-layout {
-  height: 100vh;
+  min-height: var(--tg-viewport-stable-height, 100vh);
 }
 
 .el-header {
@@ -269,7 +305,7 @@ const handleCommand = (command) => {
   justify-content: space-between;
   padding: 0 16px;
   position: fixed;
-  top: 0;
+  top: var(--tg-content-safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   z-index: 100;
@@ -290,7 +326,8 @@ const handleCommand = (command) => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 50px;
+  height: calc(50px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   background: #fff;
   border-top: 1px solid #eee;
   display: flex;
@@ -387,5 +424,17 @@ const handleCommand = (command) => {
   .el-main {
     padding-top: 46px !important;
   }
+}
+
+/* 菜单徽章 */
+.menu-badge {
+  margin-left: 8px;
+}
+
+.menu-badge :deep(.el-badge__content) {
+  height: 16px;
+  line-height: 16px;
+  padding: 0 5px;
+  font-size: 11px;
 }
 </style>

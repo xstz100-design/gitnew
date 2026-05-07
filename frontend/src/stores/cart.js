@@ -17,9 +17,20 @@ export const useCartStore = defineStore(
       return items.value.reduce((sum, item) => sum + item.price_usd * item.quantity, 0)
     })
 
+    function resolvePriceByMode(product, purchaseMode = 'default') {
+      if (purchaseMode === 'piece' && product.price_per_piece_usd) {
+        return Number(product.price_per_piece_usd)
+      }
+      if (purchaseMode === 'package' && product.price_per_package_usd) {
+        return Number(product.price_per_package_usd)
+      }
+      return Number(product.price_usd)
+    }
+
     // 添加到购物车
-    function addItem(product, quantity = 1) {
-      const existingItem = items.value.find((item) => item.id === product.id)
+    function addItem(product, quantity = 1, purchaseMode = 'default') {
+      const existingItem = items.value.find((item) => item.id === product.id && item.purchase_mode === purchaseMode)
+      const unitPrice = resolvePriceByMode(product, purchaseMode)
 
       if (existingItem) {
         // 检查库存
@@ -36,7 +47,9 @@ export const useCartStore = defineStore(
           name: product.name,
           name_kh: product.name_kh,
           unit: product.unit,
-          price_usd: product.price_usd,
+          price_usd: unitPrice,
+          purchase_mode: purchaseMode,
+          display_unit: purchaseMode === 'piece' ? '件' : purchaseMode === 'package' ? '包' : product.unit,
           stock: product.stock,
           image_url: product.image_url,
           quantity,

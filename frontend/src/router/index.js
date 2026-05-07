@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { isMobile } from '@/utils/device'
+import { isTelegramMiniApp, getInitData } from '@/utils/telegram'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -101,9 +102,19 @@ const router = createRouter({
           component: () => import('@/views/admin/Orders.vue'),
         },
         {
-          path: 'merchants',
-          name: 'AdminMerchants',
-          component: () => import('@/views/admin/Merchants.vue'),
+          path: 'picking',
+          name: 'AdminPicking',
+          component: () => import('@/views/admin/Picking.vue'),
+        },
+        {
+          path: 'settings',
+          name: 'AdminSettings',
+          component: () => import('@/views/admin/Settings.vue'),
+        },
+
+        {
+          path: 'approvals',
+          redirect: '/admin/merchants',
         },
         {
           path: 'categories',
@@ -122,33 +133,70 @@ const router = createRouter({
         },
       ],
     },
+    // 配送员路由
     {
       path: '/',
-      redirect: '/login',
+      redirect: '/m/shop',
     },
   ],
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
+  const inTelegram = isTelegramMiniApp()
 
+  // 未登录时
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next('/login')
-    return
+    // 在 Telegram 环境中，尝试自动登录
+    if (inTelegram) {
+      try {
+        await userStore.telegramLogin(getInitData())
+        // 登录成功，管理员在TG中进入管理界面
+        if (userStore.isAdmin) {
+          next('/admin/dashboard')
+          return
+        }
+        // 商户继续导航
+      } catch (e) {
+        console.error('TG 自动登录失败:', e)
+        next('/login')
+        return
+      }
+    } else {
+      next('/login')
+      return
+    }
   }
 
+  // 已登录访问 /login → 按角色重定向
   if (to.path === '/login' && userStore.isLoggedIn) {
     if (userStore.isAdmin) {
       next('/admin/dashboard')
     } else if (userStore.isMerchant) {
       next(isMobile() ? '/m/shop' : '/merchant/products')
     } else {
-      next('/')
+      next('/m/shop')
     }
     return
   }
 
+  // 在 Telegram 中访问 /login → 尝试自动登录后重定向
+  if (to.path === '/login' && inTelegram && !userStore.isLoggedIn) {
+    try {
+      await userStore.telegramLogin(getInitData())
+      if (userStore.isAdmin) {
+        next('/admin/dashboard')
+      } else {
+        next('/m/shop')
+      }
+      return
+    } catch {
+      // 登录失败，继续显示登录页
+    }
+  }
+
+  // 角色不匹配 → 重定向
   if (to.meta.role && userStore.userRole !== to.meta.role) {
     if (userStore.isAdmin) {
       next('/admin/dashboard')

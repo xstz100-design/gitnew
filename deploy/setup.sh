@@ -49,8 +49,10 @@ systemctl enable wholesale
 
 echo ""
 echo "=== 部署完成 ==="
-echo "前端: http://43.134.13.229"
-echo "后端: http://43.134.13.229/api"
+echo "前端: http://khmerai.cn"
+echo "后端: http://khmerai.cn/api"
+echo ""
+echo "下一步: 运行 bash /opt/wholesale/deploy/setup_https.sh 配置免费 HTTPS"
 echo ""
 echo "查看后端日志: journalctl -u wholesale -f"
 echo "默认管理员: admin / admin123"

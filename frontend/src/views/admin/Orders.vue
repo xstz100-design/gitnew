@@ -228,6 +228,15 @@
             <el-radio label="cancelled">{{ $t('order.cancelled') }}</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item :label="$t('cart.scheduledAt')">
+          <el-date-picker
+            v-model="statusForm.scheduled_at"
+            type="datetime"
+            :placeholder="$t('cart.scheduledAt')"
+            style="width: 100%"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+          />
+        </el-form-item>
         <el-form-item :label="$t('order.note')">
           <el-input
             v-model="statusForm.note"
@@ -304,6 +313,7 @@ const handleCurrentChange = () => {
 const statusForm = reactive({
   payment_status: 'unpaid',
   delivery_status: 'pending',
+  scheduled_at: '',
   note: '',
 })
 
@@ -343,6 +353,7 @@ const handleUpdateStatus = (order) => {
   currentOrder.value = order
   statusForm.payment_status = order.payment_status
   statusForm.delivery_status = order.delivery_status
+  statusForm.scheduled_at = order.scheduled_at ? order.scheduled_at.slice(0, 19) : ''
   statusForm.note = order.note || ''
   statusVisible.value = true
 }

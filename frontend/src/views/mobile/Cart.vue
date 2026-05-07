@@ -1,6 +1,6 @@
 <template>
   <div class="mobile-cart">
-    <van-nav-bar :title="$t('cart.title')" left-arrow fixed placeholder @click-left="$router.back()" />
+    <van-nav-bar :title="$t('cart.title')" :left-text="$t('common.back')" left-arrow fixed placeholder @click-left="handleBack" />
     
     <van-empty v-if="cartStore.items.length === 0" :description="$t('cart.empty')">
       <van-button type="primary" round @click="$router.push('/m/shop')">
@@ -9,6 +9,15 @@
     </van-empty>
     
     <template v-else>
+      <div v-if="!userStore.canOrder" class="restriction-panel">
+        <div class="restriction-title">{{ restrictionTitle }}</div>
+        <div class="restriction-desc">{{ restrictionDescription }}</div>
+        <div class="restriction-note">{{ cartSavedTip }}</div>
+        <van-button round block type="warning" class="restriction-btn" @click="goToRestrictionAction">
+          {{ restrictionActionLabel }}
+        </van-button>
+      </div>
+
       <!-- 商铺信息 -->
       <van-cell-group inset style="margin-top: 10px">
         <van-cell :title="$t('cart.wholesaleShop')" is-link />
@@ -64,10 +73,17 @@
       
       <!-- 配送信息 -->
       <van-cell-group inset>
+        <van-cell
+          v-if="!userStore.canOrder"
+          :title="cartFormTip"
+          icon="warning-o"
+          class="checkout-disabled-tip"
+        />
         <van-field
           v-model="orderForm.delivery_address"
           :label="$t('cart.address')"
           :placeholder="$t('cart.addressPlaceholder')"
+          :readonly="!formEditable"
           clearable
         />
         <van-field
@@ -75,6 +91,7 @@
           :label="$t('cart.phone')"
           type="tel"
           :placeholder="$t('cart.phonePlaceholder')"
+          :readonly="!formEditable"
           clearable
         />
         <van-field
@@ -82,6 +99,7 @@
           :label="$t('cart.note')"
           type="textarea"
           :placeholder="$t('cart.notePlaceholder')"
+          :readonly="!formEditable"
           rows="2"
           autosize
           maxlength="200"
@@ -91,7 +109,7 @@
       
       <!-- 支付方式 -->
       <van-cell-group inset>
-        <van-cell :title="$t('cart.paymentMethod')" is-link @click="showPaymentPicker = true">
+        <van-cell :title="$t('cart.paymentMethod')" :is-link="formEditable" @click="openPaymentPicker">
           <template #value>
             <span :style="{ color: orderForm.payment_status === 'monthly' ? '#1989fa' : '#333' }">
               {{ orderForm.payment_status === 'monthly' ? $t('cart.monthlyPayment') : $t('cart.cashPayment') }}
@@ -111,13 +129,14 @@
       <!-- 底部结算栏 -->
       <van-submit-bar
         :price="totalPrice * 100"
-        :button-text="$t('cart.submitOrder')"
-        @submit="handleSubmit"
+        :button-text="primaryButtonText"
+        @submit="handlePrimaryAction"
         :loading="submitting"
+        :disabled="submitting"
       >
         <van-checkbox v-model="checkAll">{{ $t('cart.selectAll') }}</van-checkbox>
         <template #tip>
-          {{ $t('cart.itemCount', { count: checkedItems.length }) }}
+          {{ footerTipText }}
         </template>
       </van-submit-bar>
     </template>
@@ -143,21 +162,103 @@ const userStore = useUserStore()
 const checkedItems = ref(cartStore.items.map(item => item.id))
 const checkAll = ref(true)
 const submitting = ref(false)
+const clientRequestId = ref('')
 const showPaymentPicker = ref(false)
+
+const formEditable = computed(() => userStore.canOrder || userStore.orderAccessState === 'incomplete')
+
+const restrictionTitle = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteTitle')
+    case 'pending':
+      return t('profile.orderGuidePendingTitle')
+    case 'rejected':
+      return t('profile.orderGuideRejectedTitle')
+    default:
+      return t('cart.checkoutDisabled')
+  }
+})
+
+const restrictionDescription = computed(() => {
+  if (userStore.orderAccessState === 'rejected' && userStore.userInfo?.rejected_reason) {
+    return `${t('profile.rejectedReason')}：${userStore.userInfo.rejected_reason}。${t('profile.orderGuideRejectedDesc')}`
+  }
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteDesc')
+    case 'pending':
+      return t('profile.orderGuidePendingDesc')
+    case 'rejected':
+      return t('profile.orderGuideRejectedDesc')
+    default:
+      return t('cart.checkoutDisabled')
+  }
+})
+
+const restrictionActionLabel = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.completeProfileAction')
+    case 'pending':
+      return t('profile.viewApprovalStatusAction')
+    case 'rejected':
+      return t('profile.resubmitForReview')
+    default:
+      return t('cart.submitOrder')
+  }
+})
+
+const cartSavedTip = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('cart.draftInfoTip')
+    case 'pending':
+      return t('cart.savedForApprovalTip')
+    case 'rejected':
+      return t('cart.savedForResubmitTip')
+    default:
+      return t('cart.itemCount', { count: checkedItems.value.length })
+  }
+})
+
+const cartFormTip = computed(() => {
+  return formEditable.value ? t('cart.draftInfoTip') : cartSavedTip.value
+})
+
+const primaryButtonText = computed(() => {
+  return userStore.canOrder ? t('cart.submitOrder') : restrictionActionLabel.value
+})
+
+const footerTipText = computed(() => {
+  return userStore.canOrder ? t('cart.itemCount', { count: checkedItems.value.length }) : cartSavedTip.value
+})
 
 const paymentActions = computed(() => {
   const actions = [
     { name: t('cart.cashPayment'), value: 'cash' },
   ]
-  if (userStore.userInfo?.allow_monthly_billing) {
+  if (userStore.userInfo?.allow_credit) {
     actions.push({ name: t('cart.monthlyPayment'), value: 'monthly' })
   }
   return actions
 })
 
+const buildClientRequestId = () => {
+  return `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 const onPaymentSelect = (action) => {
   orderForm.value.payment_status = action.value
   showPaymentPicker.value = false
+}
+
+const openPaymentPicker = () => {
+  if (!formEditable.value) {
+    goToRestrictionAction()
+    return
+  }
+  showPaymentPicker.value = true
 }
 
 const orderForm = ref({
@@ -221,7 +322,29 @@ const removeItem = async (id) => {
 }
 
 // 提交订单
+const goToRestrictionAction = () => {
+  showDialog({ message: restrictionDescription.value })
+  router.push('/m/profile')
+}
+
+const handleBack = () => {
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
+  router.replace('/m/shop')
+}
+
 const handleSubmit = async () => {
+  if (submitting.value) {
+    return
+  }
+
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+
   if (checkedItems.value.length === 0) {
     showDialog({ message: t('cart.selectItems') })
     return
@@ -235,6 +358,7 @@ const handleSubmit = async () => {
   }
   
   submitting.value = true
+  clientRequestId.value = clientRequestId.value || buildClientRequestId()
   hapticFeedback('medium')
   
   try {
@@ -248,6 +372,7 @@ const handleSubmit = async () => {
     await createOrder({
       items,
       ...orderForm.value,
+      client_request_id: clientRequestId.value,
     })
     
     // 清除已下单的商品
@@ -257,6 +382,7 @@ const handleSubmit = async () => {
     
     hapticFeedback('success')
     showSuccessToast(t('cart.orderSuccess'))
+    clientRequestId.value = ''
     router.push('/m/orders')
   } catch (error) {
     hapticFeedback('error')
@@ -264,13 +390,50 @@ const handleSubmit = async () => {
     submitting.value = false
   }
 }
+
+const handlePrimaryAction = async () => {
+  if (submitting.value) {
+    return
+  }
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+  await handleSubmit()
+}
 </script>
 
 <style scoped>
 .mobile-cart {
-  min-height: 100vh;
+  min-height: var(--tg-viewport-height, 100vh);
   background: #f5f5f5;
-  padding-bottom: 100px;
+  padding-bottom: calc(100px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+.restriction-panel {
+  margin: 10px 12px 0;
+  padding: 14px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 12px;
+}
+
+.restriction-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ad6800;
+}
+
+.restriction-desc,
+.restriction-note {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8c5a00;
+}
+
+.restriction-btn {
+  margin-top: 12px;
 }
 
 .cart-item {
@@ -318,5 +481,9 @@ const handleSubmit = async () => {
 .price-khr {
   font-size: 12px;
   color: #8c8c8c;
+}
+
+.checkout-disabled-tip {
+  margin-bottom: 8px;
 }
 </style>

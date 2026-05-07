@@ -2,7 +2,34 @@
   <div class="profile-page">
     <h2>{{ $t('profile.title') }}</h2>
 
-    <!-- 个人信息卡片 -->
+    <!-- 审核状态提示 -->
+    <el-alert
+      v-if="userStore.isMerchant && !userStore.profileCompleted"
+      type="warning"
+      :title="$t('profile.pleaseCompleteProfile')"
+      :description="$t('profile.completeProfileTip')"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px;"
+    />
+    <el-alert
+      v-else-if="userStore.isMerchant && userStore.approvalStatus === 'pending'"
+      type="info"
+      :title="$t('profile.pendingApproval')"
+      :description="$t('profile.pendingApprovalTip')"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px;"
+    />
+    <el-alert
+      v-else-if="userStore.isMerchant && userStore.approvalStatus === 'rejected'"
+      type="error"
+      :title="$t('profile.rejected')"
+      :description="(userStore.userInfo?.rejected_reason || '') + ' — ' + $t('profile.rejectedTip')"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px;"
+    />
     <el-card class="info-card">
       <template #header>
         <div class="card-header">
@@ -24,7 +51,7 @@
         <el-form-item :label="$t('profile.phone')">
           <div class="editable-field">
             <span class="info-value">{{ userStore.userInfo?.phone || $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('phone', $t('profile.phone'), userStore.userInfo?.phone)">
+            <el-button type="primary" link size="small" @click="handlePhoneEdit">
               {{ $t('common.edit') }}
             </el-button>
           </div>
@@ -79,8 +106,22 @@
       </el-form>
     </el-card>
 
-    <!-- 账户安全 -->
-    <el-card class="info-card">
+    <!-- 提交审核按钮 -->
+    <div v-if="userStore.isMerchant && (!userStore.profileCompleted || userStore.approvalStatus === 'rejected')" style="margin-bottom: 16px;">
+      <el-button type="primary" size="large" style="width: 100%;" :loading="submittingProfile" @click="submitProfileForReview">
+        {{ userStore.approvalStatus === 'rejected' ? $t('profile.resubmitForReview') : $t('profile.submitForReview') }}
+      </el-button>
+    </div>
+
+    <!-- 审核中：刷新状态按钮 -->
+    <div v-else-if="userStore.isMerchant && userStore.approvalStatus === 'pending'" style="margin-bottom: 16px;">
+      <el-button type="primary" size="large" style="width: 100%;" :loading="checkingStatus" @click="checkApprovalStatus">
+        {{ $t('profile.checkStatus') }}
+      </el-button>
+    </div>
+
+    <!-- 账户安全 (仅管理员) -->
+    <el-card class="info-card" v-if="userStore.isAdmin">
       <template #header>
         <div class="card-header">
           <span>{{ $t('profile.accountSecurity') }}</span>
@@ -92,6 +133,45 @@
             {{ $t('profile.changePassword') }}
           </el-button>
         </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card class="info-card" v-if="userStore.isAdmin">
+      <template #header>
+        <div class="card-header">
+          <span>{{ $t('admin.telegramSettings') }}</span>
+        </div>
+      </template>
+      <el-form label-width="120px">
+        <el-form-item :label="$t('admin.telegramId')">
+          <div class="editable-field">
+            <span class="info-value">{{ userStore.userInfo?.telegram_id || $t('profile.notSet') }}</span>
+            <el-button type="primary" link size="small" @click="editField('telegram_id', $t('admin.telegramId'), userStore.userInfo?.telegram_id)">
+              {{ $t('common.edit') }}
+            </el-button>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="telegramMiniAppAvailable" :label="$t('admin.bindCurrentTelegram')">
+          <el-button type="primary" :loading="bindingTelegram" @click="bindCurrentTelegram">
+            {{ userStore.userInfo?.telegram_id ? $t('admin.rebindCurrentTelegram') : $t('admin.bindCurrentTelegram') }}
+          </el-button>
+        </el-form-item>
+        <div class="notify-tip">{{ telegramMiniAppAvailable ? $t('admin.telegramTipMiniApp') : $t('admin.telegramTipManual') }}</div>
+      </el-form>
+    </el-card>
+
+    <!-- 推送通知设置 -->
+    <el-card class="info-card" v-if="userStore.userInfo?.telegram_id">
+      <template #header>
+        <div class="card-header">
+          <span>{{ $t('profile.notificationSettings') }}</span>
+        </div>
+      </template>
+      <el-form label-width="120px">
+        <el-form-item :label="$t('profile.notifyEnabled')">
+          <el-switch v-model="notifyEnabled" @change="toggleNotify" />
+        </el-form-item>
+        <div class="notify-tip">{{ $t('profile.notifyTip') }}</div>
       </el-form>
     </el-card>
 
@@ -136,6 +216,32 @@
       <template #footer>
         <el-button @click="editDialogVisible = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="saving" @click="handleSaveProfile">{{ $t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="showPhoneVerifyDialog"
+      :title="$t('profile.verifyPhone')"
+      width="420px"
+      destroy-on-close
+    >
+      <el-form label-width="92px">
+        <el-form-item :label="$t('profile.phone')">
+          <el-input v-model="phoneVerifyForm.phone" :placeholder="$t('register.phonePlaceholder')" />
+        </el-form-item>
+        <el-form-item v-if="!canDirectVerifyPhone()" :label="$t('register.smsCodePlaceholder')">
+          <div class="phone-verify-row">
+            <el-input v-model="phoneVerifyForm.code" :placeholder="$t('register.smsCodePlaceholder')" />
+            <el-button type="primary" plain :loading="sendingPhoneCode" @click="sendPhoneCode">
+              {{ $t('profile.sendTelegramCode') }}
+            </el-button>
+          </div>
+        </el-form-item>
+        <div class="notify-tip">{{ canDirectVerifyPhone() ? $t('profile.verifyPhoneMiniAppTip') : $t('profile.verifyPhoneTip') }}</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPhoneVerifyDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="verifyingPhone" @click="confirmPhoneVerification">{{ $t('profile.verifyAndSave') }}</el-button>
       </template>
     </el-dialog>
 
@@ -188,26 +294,42 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { Location, Plus } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useCartStore } from '@/stores/cart'
-import { updateProfile, changePassword, getPublicAnnouncements, uploadImage } from '@/api'
+import { updateProfile, changePassword, getPublicAnnouncements, uploadImage, submitForReview, updateAdminTelegram, bindCurrentAdminTelegram, sendPhoneVerificationCode, verifyPhoneVerificationCode, verifyPhoneWithTelegram } from '@/api'
 import { getCurrentLanguage } from '@/i18n'
+import { getInitData, isTelegramMiniApp } from '@/utils/telegram'
 
 const { t } = useI18n()
+const router = useRouter()
 const userStore = useUserStore()
 const cartStore = useCartStore()
 const saving = ref(false)
+const submittingProfile = ref(false)
+const checkingStatus = ref(false)
 const editDialogVisible = ref(false)
+const showPhoneVerifyDialog = ref(false)
 const showPasswordDialog = ref(false)
 const showAbout = ref(false)
 const currentLang = ref(getCurrentLanguage())
 const contactInfo = ref([])
 const aboutInfo = ref([])
+const notifyEnabled = ref(userStore.userInfo?.notify_enabled !== false)
+const telegramMiniAppAvailable = ref(isTelegramMiniApp())
+const bindingTelegram = ref(false)
+const sendingPhoneCode = ref(false)
+const verifyingPhone = ref(false)
+const phoneVerifyForm = reactive({ phone: '', code: '' })
+
+const canDirectVerifyPhone = () => telegramMiniAppAvailable.value && !!getInitData()
 
 onMounted(async () => {
+  // 刷新用户信息，确保审核状态是最新的
+  userStore.fetchUserInfo()
   try {
     const [c, a] = await Promise.all([getPublicAnnouncements('contact'), getPublicAnnouncements('about')])
     contactInfo.value = c
@@ -226,12 +348,98 @@ const editField = (key, label, currentValue) => {
   editDialogVisible.value = true
 }
 
+const handlePhoneEdit = () => {
+  if (!userStore.userInfo?.telegram_id) {
+    editField('phone', t('profile.phone'), userStore.userInfo?.phone)
+    return
+  }
+  phoneVerifyForm.phone = userStore.userInfo?.phone || ''
+  phoneVerifyForm.code = ''
+  showPhoneVerifyDialog.value = true
+}
+
+const sendPhoneCode = async () => {
+  if (canDirectVerifyPhone()) {
+    ElMessage.info(t('profile.verifyPhoneMiniAppTip'))
+    return
+  }
+  if (!userStore.userInfo?.telegram_id) {
+    ElMessage.warning(t('profile.telegramBindRequired'))
+    return
+  }
+  if (!phoneVerifyForm.phone.trim()) {
+    ElMessage.warning(t('profile.pleaseInputPhone'))
+    return
+  }
+  sendingPhoneCode.value = true
+  try {
+    await sendPhoneVerificationCode({ phone: phoneVerifyForm.phone.trim() })
+    ElMessage.success(t('profile.telegramCodeSent'))
+  } finally {
+    sendingPhoneCode.value = false
+  }
+}
+
+const confirmPhoneVerification = async () => {
+  if (!phoneVerifyForm.phone.trim()) {
+    ElMessage.warning(t('profile.pleaseInputPhone'))
+    return
+  }
+  if (canDirectVerifyPhone()) {
+    verifyingPhone.value = true
+    try {
+      const updatedUser = await verifyPhoneWithTelegram({
+        phone: phoneVerifyForm.phone.trim(),
+        init_data: getInitData(),
+      })
+      userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+      notifyEnabled.value = updatedUser.notify_enabled !== false
+      ElMessage.success(t('profile.phoneVerified'))
+      showPhoneVerifyDialog.value = false
+    } finally {
+      verifyingPhone.value = false
+    }
+    return
+  }
+  if (!phoneVerifyForm.code.trim()) {
+    ElMessage.warning(t('profile.phoneCodeRequired'))
+    return
+  }
+  verifyingPhone.value = true
+  try {
+    const updatedUser = await verifyPhoneVerificationCode({
+      phone: phoneVerifyForm.phone.trim(),
+      code: phoneVerifyForm.code.trim(),
+    })
+    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+    notifyEnabled.value = updatedUser.notify_enabled !== false
+    ElMessage.success(t('profile.phoneVerified'))
+    showPhoneVerifyDialog.value = false
+  } finally {
+    verifyingPhone.value = false
+  }
+}
+
 const handleSaveProfile = async () => {
   saving.value = true
   try {
     const val = editValue.value.trim()
-    const data = { [editKey.value]: val }
-    const updatedUser = await updateProfile(data)
+    let updatedUser
+    if (editKey.value === 'telegram_id') {
+      if (!val) {
+        updatedUser = await updateAdminTelegram({ telegram_id: null })
+      } else {
+        const telegramId = parseInt(val, 10)
+        if (Number.isNaN(telegramId)) {
+          ElMessage.warning(t('admin.telegramIdInvalid'))
+          return
+        }
+        updatedUser = await updateAdminTelegram({ telegram_id: telegramId })
+      }
+    } else {
+      const data = { [editKey.value]: val }
+      updatedUser = await updateProfile(data)
+    }
     userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
     ElMessage.success(t('profile.updateSuccess'))
     editDialogVisible.value = false
@@ -239,6 +447,84 @@ const handleSaveProfile = async () => {
     console.error('Update failed:', error)
   } finally {
     saving.value = false
+  }
+}
+
+const bindCurrentTelegram = async () => {
+  if (!telegramMiniAppAvailable.value) {
+    ElMessage.warning(t('admin.telegramBindMiniAppOnly'))
+    return
+  }
+
+  const initData = getInitData()
+  if (!initData) {
+    ElMessage.warning(t('admin.telegramBindMiniAppOnly'))
+    return
+  }
+
+  bindingTelegram.value = true
+  try {
+    const updatedUser = await bindCurrentAdminTelegram(initData)
+    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+    ElMessage.success(t('admin.telegramBindSuccess'))
+  } finally {
+    bindingTelegram.value = false
+  }
+}
+
+const toggleNotify = async (val) => {
+  try {
+    const updatedUser = await updateProfile({ notify_enabled: val })
+    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+    ElMessage.success(t('profile.updateSuccess'))
+  } catch (error) {
+    notifyEnabled.value = !val
+    console.error('Toggle notify failed:', error)
+  }
+}
+
+// 提交资料等待审核
+const submitProfileForReview = async () => {
+  const info = userStore.userInfo
+  if (!info?.full_name || info.full_name.startsWith('TG_')) {
+    ElMessage.warning(t('profile.pleaseInputName'))
+    return
+  }
+  if (!info?.phone) {
+    ElMessage.warning(t('profile.pleaseInputPhone'))
+    return
+  }
+  if (!info?.address) {
+    ElMessage.warning(t('profile.pleaseInputAddress'))
+    return
+  }
+  submittingProfile.value = true
+  try {
+    await submitForReview()
+    await userStore.fetchUserInfo()
+    ElMessage.success(t('profile.profileSubmitted'))
+  } catch (error) {
+    // request.js 拦截器已显示错误
+  } finally {
+    submittingProfile.value = false
+  }
+}
+
+// 刷新审核状态
+const checkApprovalStatus = async () => {
+  checkingStatus.value = true
+  try {
+    await userStore.fetchUserInfo()
+    if (userStore.isApproved) {
+      ElMessage.success(t('profile.approved'))
+      setTimeout(() => router.push('/merchant/products'), 800)
+    } else {
+      ElMessage.info(t('profile.pendingApproval'))
+    }
+  } catch {
+    ElMessage.error(t('profile.updateFailed'))
+  } finally {
+    checkingStatus.value = false
   }
 }
 
@@ -338,6 +624,8 @@ const clearCache = () => {
   gap: 4px; cursor: pointer; transition: all 0.2s; color: #999; font-size: 12px;
 }
 .store-photo-uploader .upload-area:hover { border-color: #409eff; color: #409eff; }
+.notify-tip { padding: 0 12px 12px; font-size: 12px; color: #909399; }
+.phone-verify-row { display: flex; gap: 8px; width: 100%; }
 .about-content { text-align: center; padding: 10px 0; }
 .about-logo img { height: 48px; margin-bottom: 10px; }
 .about-version { color: #999; font-size: 13px; margin-bottom: 16px; }

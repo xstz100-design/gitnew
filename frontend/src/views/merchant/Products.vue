@@ -22,6 +22,16 @@
       </div>
     </div>
 
+    <div v-if="!userStore.canOrder" class="browse-guide">
+      <div class="guide-copy">
+        <div class="guide-title">{{ restrictionTitle }}</div>
+        <div class="guide-desc">{{ restrictionDescription }}</div>
+      </div>
+      <el-button type="warning" @click="goToRestrictionAction">
+        {{ restrictionActionLabel }}
+      </el-button>
+    </div>
+
     <!-- 分类导航 -->
     <div class="category-tabs">
       <div
@@ -88,7 +98,14 @@
 
         <!-- 加购操作 -->
         <div class="card-action" @click.stop>
-          <div v-if="getCartQty(product.id) > 0" class="qty-control">
+          <button
+            v-if="!userStore.canOrder"
+            class="add-btn guide-btn"
+            @click="goToRestrictionAction"
+          >
+            {{ restrictionActionLabel }}
+          </button>
+          <div v-else-if="getCartQty(product.id) > 0" class="qty-control">
             <button class="qty-btn" @click="decrementCart(product)">−</button>
             <input
               v-if="editingQtyId === product.id"
@@ -176,9 +193,22 @@
           </div>
           <div class="detail-row">
             <span class="label">{{ $t('product.price') }}</span>
-            <span class="value price">${{ currentProduct.price_usd }}
-              <em>≈ {{ formatKHR(usdToKhr(currentProduct.price_usd)) }}</em>
+            <span class="value price">${{ selectedDetailPrice }}
+              <em>≈ {{ formatKHR(usdToKhr(selectedDetailPrice)) }}</em>
             </span>
+          </div>
+          <div v-if="purchaseModes.length > 1" class="detail-row">
+            <span class="label">{{ $t('product.buyMode') }}</span>
+            <el-radio-group v-model="detailPurchaseMode" size="small">
+              <el-radio-button
+                v-for="mode in purchaseModes"
+                :key="mode.value"
+                :label="mode.value"
+                :value="mode.value"
+              >
+                {{ mode.label }} (${{ mode.price }})
+              </el-radio-button>
+            </el-radio-group>
           </div>
           <div v-if="currentProduct.retail_price_usd" class="detail-row detail-retail-row">
             <span class="label">{{ $t('product.retailPrice') }}</span>
@@ -218,9 +248,9 @@
         <el-button
           type="primary"
           :disabled="currentProduct?.stock <= 0"
-          @click="addFromDetail"
+          @click="handleDetailPrimaryAction"
         >
-          {{ $t('product.addToCartFull') }}
+          {{ userStore.canOrder ? $t('product.addToCartFull') : restrictionActionLabel }}
         </el-button>
       </template>
     </el-dialog>
@@ -229,16 +259,20 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { Search, ShoppingCart, Picture, Bell } from '@element-plus/icons-vue'
 import { getProducts, getCategories, getPublicAnnouncements } from '@/api'
 import { useCartStore } from '@/stores/cart'
+import { useUserStore } from '@/stores/user'
 import { formatKHR, usdToKhr } from '@/utils/format'
 import { getCurrentLanguage } from '@/i18n'
 
 const { t } = useI18n()
+const router = useRouter()
 const cartStore = useCartStore()
+const userStore = useUserStore()
 
 const loading = ref(true)
 const products = ref([])
@@ -253,6 +287,71 @@ const detailVisible = ref(false)
 const currentProduct = ref(null)
 const detailQty = ref(1)
 const carouselIndex = ref(0)
+const detailPurchaseMode = ref('default')
+
+const purchaseModes = computed(() => {
+  if (!currentProduct.value) return []
+  const product = currentProduct.value
+  const modes = [
+    { value: 'default', label: product.unit || t('product.unit'), price: Number(product.price_usd || 0).toFixed(2) },
+  ]
+  if (product.price_per_piece_usd) {
+    modes.push({ value: 'piece', label: t('product.buyByPiece'), price: Number(product.price_per_piece_usd).toFixed(2) })
+  }
+  if (product.price_per_package_usd) {
+    modes.push({ value: 'package', label: t('product.buyByPackage'), price: Number(product.price_per_package_usd).toFixed(2) })
+  }
+  return modes
+})
+
+const selectedDetailPrice = computed(() => {
+  if (!currentProduct.value) return 0
+  if (detailPurchaseMode.value === 'piece' && currentProduct.value.price_per_piece_usd) return Number(currentProduct.value.price_per_piece_usd)
+  if (detailPurchaseMode.value === 'package' && currentProduct.value.price_per_package_usd) return Number(currentProduct.value.price_per_package_usd)
+  return Number(currentProduct.value.price_usd || 0)
+})
+
+const restrictionTitle = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteTitle')
+    case 'pending':
+      return t('profile.orderGuidePendingTitle')
+    case 'rejected':
+      return t('profile.orderGuideRejectedTitle')
+    default:
+      return t('product.browseOnlyTip')
+  }
+})
+
+const restrictionDescription = computed(() => {
+  if (userStore.orderAccessState === 'rejected' && userStore.userInfo?.rejected_reason) {
+    return `${t('profile.rejectedReason')}: ${userStore.userInfo.rejected_reason}. ${t('profile.orderGuideRejectedDesc')}`
+  }
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteDesc')
+    case 'pending':
+      return t('profile.orderGuidePendingDesc')
+    case 'rejected':
+      return t('profile.orderGuideRejectedDesc')
+    default:
+      return t('product.browseOnlyTip')
+  }
+})
+
+const restrictionActionLabel = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.completeProfileAction')
+    case 'pending':
+      return t('profile.viewApprovalStatusAction')
+    case 'rejected':
+      return t('profile.resubmitForReview')
+    default:
+      return t('product.addToCartFull')
+  }
+})
 
 // 获取商品所有图片
 const getProductImages = (product) => {
@@ -313,6 +412,10 @@ const getCartQty = (id) => {
 
 const incrementCart = (product) => {
   if (product.stock <= 0) return
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
   cartStore.addItem(product, 1)
   ElMessage.success({ message: t('product.addedToCart'), duration: 1000, grouping: true })
 }
@@ -349,14 +452,32 @@ const showDetail = (product) => {
   currentProduct.value = product
   detailQty.value = 1
   carouselIndex.value = 0
+  detailPurchaseMode.value = 'default'
   detailVisible.value = true
 }
 
 const addFromDetail = () => {
   if (!currentProduct.value) return
-  cartStore.addItem(currentProduct.value, detailQty.value)
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+  cartStore.addItem(currentProduct.value, detailQty.value, detailPurchaseMode.value)
   ElMessage.success(t('product.addedToCart'))
   detailVisible.value = false
+}
+
+const goToRestrictionAction = () => {
+  ElMessage.warning(restrictionDescription.value)
+  router.push('/merchant/profile')
+}
+
+const handleDetailPrimaryAction = () => {
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+  addFromDetail()
 }
 
 // 加载商品列表
@@ -447,6 +568,39 @@ onMounted(async () => {
 .notice-item {
   font-size: 13px;
   color: #ad6800;
+}
+
+.browse-guide {
+  margin: 12px 20px 0;
+  padding: 16px;
+  border-radius: 12px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.guide-copy {
+  min-width: 0;
+}
+
+.guide-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ad6800;
+}
+
+.guide-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8c5a00;
+}
+
+.guide-btn {
+  background: #fa8c16;
 }
 
 @keyframes noticeScroll {

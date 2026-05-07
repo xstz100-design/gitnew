@@ -18,11 +18,29 @@ export function login(username, password) {
 }
 
 /**
+ * Telegram Mini App 免登录
+ */
+export function telegramAuth(initData) {
+  return request({
+    url: '/api/auth/telegram-auth',
+    method: 'post',
+    data: { init_data: initData },
+  })
+}
+
+/**
  * 获取当前用户信息
  */
 export function getCurrentUser() {
   return request({
     url: '/api/auth/me',
+    method: 'get',
+  })
+}
+
+export function getDashboardMetrics() {
+  return request({
+    url: '/api/auth/dashboard-metrics',
     method: 'get',
   })
 }
@@ -35,6 +53,51 @@ export function register(userData) {
     url: '/api/auth/register',
     method: 'post',
     data: userData,
+  })
+}
+
+/**
+ * 获取待审核用户列表 - 仅管理员
+ */
+export function getPendingUsers() {
+  return request({
+    url: '/api/auth/pending-users',
+    method: 'get',
+  })
+}
+
+/**
+ * 获取所有注册用户(可按状态筛选) - 仅管理员
+ */
+export function getAllRegistrations(status = null) {
+  return request({
+    url: '/api/auth/all-registrations',
+    method: 'get',
+    params: status ? { status } : {},
+  })
+}
+
+/**
+ * 审核用户 - 仅管理员
+ */
+export function approveUser(userId, approved, rejectedReason = null) {
+  return request({
+    url: `/api/auth/users/${userId}/approve`,
+    method: 'post',
+    data: { 
+      approved, 
+      rejected_reason: rejectedReason 
+    },
+  })
+}
+
+/**
+ * 获取待审核用户数量 - 仅管理员
+ */
+export function getPendingCount() {
+  return request({
+    url: '/api/auth/pending-count',
+    method: 'get',
   })
 }
 
@@ -81,6 +144,14 @@ export function resetUserPassword(userId) {
   })
 }
 
+export function setUserSuperAdmin(userId, isSuperAdmin) {
+  return request({
+    url: `/api/auth/users/${userId}/super-admin`,
+    method: 'post',
+    data: { is_super_admin: isSuperAdmin },
+  })
+}
+
 /**
  * 删除用户 - 仅管理员
  */
@@ -99,6 +170,59 @@ export function updateProfile(data) {
     url: '/api/auth/me',
     method: 'patch',
     data,
+  })
+}
+
+/**
+ * 管理员绑定/解绑Telegram ID
+ */
+export function updateAdminTelegram(data) {
+  return request({
+    url: '/api/auth/me/telegram',
+    method: 'patch',
+    data,
+  })
+}
+
+export function bindCurrentAdminTelegram(initData) {
+  return request({
+    url: '/api/auth/me/telegram/bind-current',
+    method: 'post',
+    data: { init_data: initData },
+  })
+}
+
+export function sendPhoneVerificationCode(data) {
+  return request({
+    url: '/api/auth/phone-verification/send',
+    method: 'post',
+    data,
+  })
+}
+
+export function verifyPhoneVerificationCode(data) {
+  return request({
+    url: '/api/auth/phone-verification/verify',
+    method: 'post',
+    data,
+  })
+}
+
+export function verifyPhoneWithTelegram(data) {
+  return request({
+    url: '/api/auth/phone-verification/telegram-verify',
+    method: 'post',
+    data,
+  })
+}
+
+/**
+ * 提交/重新提交资料审核
+ */
+export function submitForReview() {
+  return request({
+    url: '/api/auth/submit-review',
+    method: 'post',
   })
 }
 
@@ -195,6 +319,69 @@ export function createOrder(data) {
   })
 }
 
+export function getDeliveryFeeSettings() {
+  return request({
+    url: '/api/settings/delivery-fee',
+    method: 'get',
+  })
+}
+
+export function updateDeliveryFeeSettings(data) {
+  return request({
+    url: '/api/settings/delivery-fee',
+    method: 'patch',
+    data,
+  })
+}
+
+export function estimateDeliveryFee(distance_km) {
+  return request({
+    url: '/api/settings/delivery-fee/estimate',
+    method: 'post',
+    data: { distance_km },
+  })
+}
+
+/** 获取配货员/配送员 Telegram chat id */
+export function getRoleChatIds() {
+  return request({
+    url: '/api/settings/role-chat-ids',
+    method: 'get',
+  })
+}
+
+/** 设置配货员/配送员 Telegram chat id */
+export function updateRoleChatIds(data) {
+  return request({
+    url: '/api/settings/role-chat-ids',
+    method: 'put',
+    data,
+  })
+}
+
+/** 抓取近期与 Bot 交互过的 chat（用于管理员快速选择群） */
+export function getTelegramRecentChats() {
+  return request({
+    url: '/api/settings/telegram-recent-chats',
+    method: 'get',
+  })
+}
+
+export function getContactInfo() {
+  return request({
+    url: '/api/settings/contact-info',
+    method: 'get',
+  })
+}
+
+export function updateContactInfo(data) {
+  return request({
+    url: '/api/settings/contact-info',
+    method: 'patch',
+    data,
+  })
+}
+
 /**
  * 更新订单 - 仅管理员
  */
@@ -212,6 +399,51 @@ export function updateOrder(id, data) {
 export function cancelOrder(id) {
   return request({
     url: `/api/orders/${id}/cancel`,
+    method: 'post',
+  })
+}
+
+// ============= 批量导入 / 条码 =============
+
+/** 通过条码查询商品 */
+export function getProductByBarcode(barcode) {
+  return request({
+    url: `/api/products/barcode/${encodeURIComponent(barcode)}`,
+    method: 'get',
+  })
+}
+
+/** 下载批量导入模板 URL（直接 a 链接打开） */
+export function getProductImportTemplateUrl() {
+  return '/api/products/import/template'
+}
+
+/** 批量导入商品（CSV） */
+export function importProducts(file, overwrite = false) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return request({
+    url: `/api/products/import?overwrite=${overwrite ? 'true' : 'false'}`,
+    method: 'post',
+    data: fd,
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+// ============= 配货 =============
+
+/** 获取配货员视图：仅商品清单 */
+export function getPickerItems(orderId) {
+  return request({
+    url: `/api/orders/picker/items/${orderId}`,
+    method: 'get',
+  })
+}
+
+/** 标记订单已配货 */
+export function markOrderPicked(orderId) {
+  return request({
+    url: `/api/orders/${orderId}/pick`,
     method: 'post',
   })
 }

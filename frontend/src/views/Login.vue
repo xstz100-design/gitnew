@@ -43,7 +43,12 @@
       </el-form>
       
       <div class="login-footer">
-        <span class="forgot-link" @click="showForgotPassword">{{ $t('login.forgotPassword') }}</span>
+        <div class="footer-links">
+          <span class="forgot-link" @click="showForgotPassword">{{ $t('login.forgotPassword') }}</span>
+        </div>
+        <div class="admin-hint">
+          <span>{{ $t('login.adminOnly') || '此登录页仅供管理员使用' }}</span>
+        </div>
       </div>
     </div>
 
@@ -52,7 +57,7 @@
       <div class="forgot-content">
         <p class="forgot-tip">{{ $t('login.forgotTip') }}</p>
         <div class="forgot-contact" v-if="contactInfo">
-          <div v-html="contactInfo"></div>
+          <p v-for="(line, idx) in contactLines" :key="idx">{{ line }}</p>
         </div>
         <div v-else class="forgot-contact">
           <p>{{ $t('login.contactAdmin') }}</p>
@@ -84,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { useUserStore } from '@/stores/user'
@@ -107,6 +112,8 @@ const formRef = ref()
 const loading = ref(false)
 const forgotVisible = ref(false)
 const contactInfo = ref('')
+// 修复 XSS: 不再用 v-html，改为按行拆分渲染纯文本
+const contactLines = computed(() => contactInfo.value ? contactInfo.value.split('\n') : [])
 
 const form = reactive({
   username: '',
@@ -222,7 +229,8 @@ const showForgotPassword = async () => {
     if (data && data.length > 0) {
       const item = data[0]
       const content = currentLang.value === 'zh' ? item.content_zh : item.content_en
-      contactInfo.value = content.replace(/\n/g, '<br>')
+      // 修复 XSS: 不再将内容转为 HTML，保留原始文本
+      contactInfo.value = content
     }
   } catch {
     contactInfo.value = ''
@@ -345,10 +353,30 @@ const showForgotPassword = async () => {
   border-top: 1px solid #F0F0F0;
 }
 
+.footer-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.divider {
+  color: #dcdfe6;
+}
+
 .forgot-link {
   color: #409eff;
   font-size: 13px;
   cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.register-link {
+  color: #409eff;
+  font-size: 13px;
+  text-decoration: none;
   &:hover {
     text-decoration: underline;
   }

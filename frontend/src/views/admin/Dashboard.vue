@@ -18,7 +18,7 @@
     
     <!-- 核心数据卡片 -->
     <el-row :gutter="mobile ? 10 : 24" class="mb-lg">
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8" :md="4">
         <div class="stat-card clickable" :class="{ active: stockFilter === 'low' }" @click="stockFilter = stockFilter === 'low' ? '' : 'low'">
           <div class="stat-icon" style="background: #DC2626">
             <el-icon :size="mobile ? 18 : 24"><warning /></el-icon>
@@ -30,7 +30,7 @@
         </div>
       </el-col>
       
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8" :md="4">
         <div class="stat-card clickable" :class="{ active: stockFilter === 'slow' }" @click="stockFilter = stockFilter === 'slow' ? '' : 'slow'">
           <div class="stat-icon" style="background: #EA580C">
             <el-icon :size="mobile ? 18 : 24"><clock /></el-icon>
@@ -42,7 +42,7 @@
         </div>
       </el-col>
       
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8" :md="4">
         <div class="stat-card clickable" :class="{ active: stockFilter === '' }" @click="stockFilter = ''">
           <div class="stat-icon" style="background: #16A34A">
             <el-icon :size="mobile ? 18 : 24"><goods /></el-icon>
@@ -54,7 +54,7 @@
         </div>
       </el-col>
       
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8" :md="4">
         <div class="stat-card">
           <div class="stat-icon" style="background: #0891B2">
             <el-icon :size="mobile ? 18 : 24"><list /></el-icon>
@@ -65,7 +65,52 @@
           </div>
         </div>
       </el-col>
+
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #0F766E">
+            <el-icon :size="mobile ? 18 : 24"><user /></el-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.activeUsers }}</div>
+            <div class="stat-label">{{ $t('admin.activeUsers') }}</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #2563EB">
+            <el-icon :size="mobile ? 18 : 24"><goods /></el-icon>
+          </div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.pageViews }}</div>
+            <div class="stat-label">{{ $t('admin.pageViews') }}</div>
+          </div>
+        </div>
+      </el-col>
     </el-row>
+
+    <div class="content-card mb-lg">
+      <div class="table-header">
+        <span class="table-title">{{ $t('admin.deliveryFeeRules') }}</span>
+      </div>
+      <el-row :gutter="12">
+        <el-col :xs="24" :sm="10">
+          <el-form-item :label="$t('admin.freeDistanceKm')">
+            <el-input-number v-model="deliveryFeeForm.free_distance_km" :min="0" :step="0.5" :precision="1" style="width: 100%" />
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :sm="10">
+          <el-form-item :label="$t('admin.feePerExtraKm')">
+            <el-input-number v-model="deliveryFeeForm.fee_per_extra_km_usd" :min="0" :step="0.1" :precision="2" style="width: 100%" />
+          </el-form-item>
+        </el-col>
+        <el-col :xs="24" :sm="4" class="delivery-save-col">
+          <el-button type="primary" :loading="savingDelivery" @click="saveDeliveryFeeSettings">{{ $t('common.save') }}</el-button>
+        </el-col>
+      </el-row>
+    </div>
     
     <el-row :gutter="mobile ? 0 : 24">
       <el-col :xs="24" :sm="12">
@@ -152,7 +197,8 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Goods, Warning, List, User, Refresh, Clock } from '@element-plus/icons-vue'
-import { getProducts, getOrders, getUserList } from '@/api'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { getProducts, getOrders, getUserList, getDashboardMetrics, getDeliveryFeeSettings, updateDeliveryFeeSettings } from '@/api'
 import { formatUSD } from '@/utils/format'
 
 // 移动端检测
@@ -169,7 +215,15 @@ const stats = ref({
   slowMoving: 0,
   pendingOrders: 0,
   totalMerchants: 0,
+  activeUsers: 0,
+  pageViews: 0,
 })
+
+const deliveryFeeForm = ref({
+  free_distance_km: 0,
+  fee_per_extra_km_usd: 0,
+})
+const savingDelivery = ref(false)
 
 const allProducts = ref([])
 const lowStockProducts = ref([])
@@ -214,13 +268,42 @@ const loadStats = async () => {
     
     const merchants = await getUserList('merchant')
     stats.value.totalMerchants = merchants.length
+
+    const metric = await getDashboardMetrics()
+    stats.value.activeUsers = metric.active_users || 0
+    stats.value.pageViews = metric.page_views || 0
   } catch (error) {
     console.error('加载统计数据失败:', error)
   }
 }
 
+const loadDeliveryFeeSettings = async () => {
+  try {
+    const data = await getDeliveryFeeSettings()
+    deliveryFeeForm.value.free_distance_km = data.free_distance_km
+    deliveryFeeForm.value.fee_per_extra_km_usd = data.fee_per_extra_km_usd
+  } catch (error) {
+    console.error('加载配送费配置失败:', error)
+  }
+}
+
+const saveDeliveryFeeSettings = async () => {
+  savingDelivery.value = true
+  try {
+    const data = await updateDeliveryFeeSettings(deliveryFeeForm.value)
+    deliveryFeeForm.value.free_distance_km = data.free_distance_km
+    deliveryFeeForm.value.fee_per_extra_km_usd = data.fee_per_extra_km_usd
+    ElMessage.success('配送费规则已更新')
+  } catch (error) {
+    console.error('更新配送费配置失败:', error)
+  } finally {
+    savingDelivery.value = false
+  }
+}
+
 onMounted(() => {
   loadStats()
+  loadDeliveryFeeSettings()
 })
 </script>
 
@@ -313,6 +396,11 @@ onMounted(() => {
 
 .amount {
   color: #1D4ED8;
+}
+
+.delivery-save-col {
+  display: flex;
+  align-items: end;
 }
 
 /* 可点击的统计卡片 */

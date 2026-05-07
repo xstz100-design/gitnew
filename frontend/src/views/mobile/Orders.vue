@@ -294,7 +294,7 @@ const handleCancel = async (order) => {
 
 <style scoped>
 .mobile-orders {
-  min-height: 100vh;
+  min-height: var(--tg-viewport-height, 100vh);
   background: #f5f5f5;
 }
 

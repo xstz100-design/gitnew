@@ -17,8 +17,12 @@ import i18n, { getCurrentLanguage } from './i18n'
 // 全局样式
 import '@/styles/global.scss'
 
+// Telegram Mini App
+import { isTelegramMiniApp, getInitData, initBrowserViewportVars, initTelegramWebApp } from '@/utils/telegram'
+
 import App from './App.vue'
 import router from './router'
+import { useUserStore } from '@/stores/user'
 
 const app = createApp(App)
 
@@ -30,4 +34,54 @@ app.use(i18n)
 app.use(ElementPlus, { locale: getCurrentLanguage() === 'en' ? en : zhCn })
 app.use(Vant)
 
-app.mount('#app')
+initBrowserViewportVars()
+
+// Telegram Mini App 自动登录
+async function bootstrapTelegram() {
+  if (!isTelegramMiniApp()) return false
+
+  initTelegramWebApp()
+
+  const userStore = useUserStore()
+  // 已有 token 则验证 token 有效性
+  if (userStore.isLoggedIn) {
+    try {
+      await userStore.fetchUserInfo()
+      return true
+    } catch {
+      // token 失效，重新登录
+      userStore.logout()
+    }
+  }
+
+  try {
+    await userStore.telegramLogin(getInitData())
+    return true
+  } catch (e) {
+    console.error('Telegram 自动登录失败:', e)
+    return false
+  }
+}
+
+async function syncTelegramEntryRoute() {
+  if (!isTelegramMiniApp()) return
+
+  const userStore = useUserStore()
+  const currentPath = router.currentRoute.value.path
+
+  if (userStore.isAdmin) {
+    if (currentPath !== '/admin/dashboard') {
+      await router.replace('/admin/dashboard')
+    }
+    return
+  }
+
+  if (userStore.isMerchant && (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/admin'))) {
+    await router.replace('/m/shop')
+  }
+}
+
+bootstrapTelegram().finally(async () => {
+  await syncTelegramEntryRoute()
+  app.mount('#app')
+})

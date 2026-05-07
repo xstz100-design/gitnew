@@ -7,6 +7,10 @@
           <el-icon><document /></el-icon>
           {{ $t('product.inventoryPreview') }}
         </el-button>
+        <el-button type="success" plain @click="importVisible = true" :size="mobile ? 'small' : 'default'">
+          <el-icon><upload /></el-icon>
+          {{ $t('product.batchImport') }}
+        </el-button>
         <el-button type="primary" @click="handleAdd" :size="mobile ? 'small' : 'default'">
           <el-icon><plus /></el-icon>
           {{ $t('product.addProduct') }}
@@ -39,6 +43,7 @@
       </el-table-column>
       <el-table-column :label="$t('product.name')" prop="name" min-width="140" />
       <el-table-column :label="$t('product.nameKh')" prop="name_kh" width="130" />
+      <el-table-column :label="$t('product.nameEn')" prop="name_en" width="130" />
       <el-table-column :label="$t('product.category')" prop="category" width="100" />
       <el-table-column :label="$t('product.unit')" prop="unit" width="70" />
       <el-table-column :label="$t('product.price')" width="110" sortable prop="price_usd">
@@ -286,12 +291,17 @@
         :label-position="mobile ? 'top' : 'right'"
       >
         <el-row :gutter="mobile ? 0 : 16">
-          <el-col :xs="24" :sm="12">
+          <el-col :xs="24" :sm="8">
             <el-form-item :label="$t('product.name')" prop="name">
               <el-input v-model="form.name" />
             </el-form-item>
           </el-col>
-          <el-col :xs="24" :sm="12">
+          <el-col :xs="24" :sm="8">
+            <el-form-item :label="$t('product.nameEn')" prop="name_en">
+              <el-input v-model="form.name_en" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="8">
             <el-form-item :label="$t('product.nameKh')" prop="name_kh">
               <el-input v-model="form.name_kh" />
             </el-form-item>
@@ -311,14 +321,19 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :xs="12" :sm="6">
+          <el-col :xs="12" :sm="4">
+            <el-form-item :label="$t('product.brand')" prop="brand">
+              <el-input v-model="form.brand" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="8" :sm="4">
             <el-form-item :label="$t('product.unit')" prop="unit">
               <el-input v-model="form.unit" :placeholder="$t('product.unitPlaceholder')" />
             </el-form-item>
           </el-col>
-          <el-col :xs="12" :sm="6">
+          <el-col :xs="8" :sm="4">
             <el-form-item :label="$t('product.sortOrder')" prop="sort_order">
-              <el-input-number v-model="form.sort_order" :min="0" controls-position="right" style="width: 100%;" />
+              <el-input v-model="form.sort_order" inputmode="numeric" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -326,22 +341,32 @@
         <el-row :gutter="mobile ? 0 : 16">
           <el-col :xs="12" :sm="6">
             <el-form-item :label="$t('product.price')" prop="price_usd">
-              <el-input-number v-model="form.price_usd" :min="0" :step="0.1" :precision="2" controls-position="right" style="width: 100%;" />
+              <el-input v-model="form.price_usd" inputmode="decimal" placeholder="0.00" style="width: 100%;" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
             <el-form-item :label="$t('product.retailPrice')" prop="retail_price_usd">
-              <el-input-number v-model="form.retail_price_usd" :min="0" :step="0.1" :precision="2" controls-position="right" style="width: 100%;" />
+              <el-input v-model="form.retail_price_usd" inputmode="decimal" placeholder="0.00" style="width: 100%;" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="12" :sm="6">
+            <el-form-item :label="$t('product.pricePerPiece')" prop="price_per_piece_usd">
+              <el-input v-model="form.price_per_piece_usd" inputmode="decimal" placeholder="0.00" style="width: 100%;" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="12" :sm="6">
+            <el-form-item :label="$t('product.pricePerPackage')" prop="price_per_package_usd">
+              <el-input v-model="form.price_per_package_usd" inputmode="decimal" placeholder="0.00" style="width: 100%;" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
             <el-form-item :label="$t('product.stock')" prop="stock">
-              <el-input-number v-model="form.stock" :min="0" controls-position="right" style="width: 100%;" />
+              <el-input v-model="form.stock" inputmode="numeric" placeholder="0" style="width: 100%;" />
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
             <el-form-item :label="$t('product.stockWarning')" prop="stock_warning">
-              <el-input-number v-model="form.stock_warning" :min="0" controls-position="right" style="width: 100%;" />
+              <el-input v-model="form.stock_warning" inputmode="numeric" placeholder="10" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -357,8 +382,8 @@
             </el-form-item>
           </el-col>
           <el-col :xs="12" :sm="6">
-            <el-form-item :label="$t('product.minOrderQty')" prop="min_order_qty">
-              <el-input-number v-model="form.min_order_qty" :min="1" controls-position="right" style="width: 100%;" />
+            <el-form-item :label="$t('product.piecesPerPackage')" prop="pieces_per_package">
+              <el-input v-model="form.pieces_per_package" inputmode="numeric" style="width: 100%;" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="12">
@@ -367,7 +392,33 @@
                 <template #prefix>
                   <el-icon><Goods /></el-icon>
                 </template>
+                <template #append>
+                  <el-button :icon="Camera" @click="openBarcodeScan" :title="$t('product.scanBarcode')" />
+                </template>
               </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="mobile ? 0 : 16">
+          <el-col :xs="24" :sm="12">
+            <el-form-item :label="$t('product.productionDate')" prop="production_date">
+              <el-date-picker
+                v-model="form.production_date"
+                type="date"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item :label="$t('product.expiryDate')" prop="expiry_date">
+              <el-date-picker
+                v-model="form.expiry_date"
+                type="date"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -413,17 +464,66 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmit">{{ $t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog v-model="importVisible" :title="$t('product.batchImport')" :width="mobile ? '94vw' : '520px'" :fullscreen="mobile">
+      <div class="import-tips">
+        <p>{{ $t('product.batchImportTip') }}</p>
+        <a :href="templateUrl" download class="template-link">{{ $t('product.downloadTemplate') }}</a>
+      </div>
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        accept=".csv"
+        :on-change="onImportFileChange"
+        :on-remove="() => (importFile = null)"
+      >
+        <el-button type="primary">{{ $t('product.selectFile') }}</el-button>
+      </el-upload>
+      <el-checkbox v-model="importOverwrite" style="margin-top: 12px;">
+        {{ $t('product.overwriteExisting') }}
+      </el-checkbox>
+      <div v-if="importResult" class="import-result">
+        <p>{{ $t('product.imported') }}: {{ importResult.created }} / {{ $t('product.updated') }}: {{ importResult.updated }} / {{ $t('product.skipped') }}: {{ importResult.skipped }}</p>
+        <ul v-if="importResult.errors?.length" class="import-errors">
+          <li v-for="(err, i) in importResult.errors" :key="i">{{ err }}</li>
+        </ul>
+      </div>
+      <template #footer>
+        <el-button @click="importVisible = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="submitImport">
+          {{ $t('product.startImport') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 扫码对话框 -->
+    <el-dialog v-model="scanVisible" :title="$t('product.scanBarcode')" :width="mobile ? '94vw' : '480px'" :fullscreen="mobile" @close="stopScan">
+      <div v-if="scanError" class="scan-error">{{ scanError }}</div>
+      <video v-show="!scanError" ref="scanVideoRef" class="scan-video" autoplay muted playsinline></video>
+      <div class="scan-manual">
+        <el-input v-model="manualBarcode" :placeholder="$t('product.enterBarcode')" @keyup.enter="confirmManual">
+          <template #append>
+            <el-button @click="confirmManual">{{ $t('common.confirm') }}</el-button>
+          </template>
+        </el-input>
+      </div>
+      <template #footer>
+        <el-button @click="scanVisible = false">{{ $t('common.cancel') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Delete, Goods } from '@element-plus/icons-vue'
+import { Plus, Delete, Goods, Upload, Camera } from '@element-plus/icons-vue'
 import { Document } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage, getAllCategories } from '@/api'
+import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage, getAllCategories, importProducts, getProductImportTemplateUrl } from '@/api'
 import { formatUSD } from '@/utils/format'
 
 const { t } = useI18n()
@@ -432,7 +532,10 @@ const { t } = useI18n()
 const mobile = ref(window.innerWidth < 768)
 const onResize = () => { mobile.value = window.innerWidth < 768 }
 onMounted(() => window.addEventListener('resize', onResize))
-onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  stopScan()
+})
 
 const loading = ref(false)
 const products = ref([])
@@ -441,6 +544,103 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const formRef = ref()
 const categoryOptions = ref([])
+
+// 批量导入 / 扫码
+const importVisible = ref(false)
+const importFile = ref(null)
+const importOverwrite = ref(false)
+const importing = ref(false)
+const importResult = ref(null)
+const uploadRef = ref()
+const templateUrl = getProductImportTemplateUrl()
+
+const scanVisible = ref(false)
+const scanError = ref('')
+const scanVideoRef = ref()
+const manualBarcode = ref('')
+let scanStream = null
+let scanDetector = null
+let scanRAF = 0
+
+const onImportFileChange = (file) => {
+  importFile.value = file?.raw || null
+  importResult.value = null
+}
+
+const submitImport = async () => {
+  if (!importFile.value) return
+  importing.value = true
+  importResult.value = null
+  try {
+    const data = await importProducts(importFile.value, importOverwrite.value)
+    importResult.value = data
+    ElMessage.success(t('product.importDone'))
+    await loadProducts()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    importing.value = false
+  }
+}
+
+const stopScan = () => {
+  if (scanRAF) cancelAnimationFrame(scanRAF)
+  scanRAF = 0
+  scanDetector = null
+  if (scanStream) {
+    scanStream.getTracks().forEach((t) => t.stop())
+    scanStream = null
+  }
+}
+
+const openBarcodeScan = async () => {
+  scanError.value = ''
+  manualBarcode.value = ''
+  scanVisible.value = true
+  await nextTick()
+
+  if (!('BarcodeDetector' in window)) {
+    scanError.value = t('product.scanNotSupported')
+    return
+  }
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+    })
+    if (scanVideoRef.value) {
+      scanVideoRef.value.srcObject = scanStream
+    }
+    scanDetector = new window.BarcodeDetector({
+      formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code'],
+    })
+    const tick = async () => {
+      if (!scanDetector || !scanVideoRef.value) return
+      try {
+        const codes = await scanDetector.detect(scanVideoRef.value)
+        if (codes && codes.length > 0) {
+          form.barcode = codes[0].rawValue
+          ElMessage.success(t('product.scanSuccess'))
+          scanVisible.value = false
+          stopScan()
+          return
+        }
+      } catch {
+        // noop
+      }
+      scanRAF = requestAnimationFrame(tick)
+    }
+    scanRAF = requestAnimationFrame(tick)
+  } catch (e) {
+    scanError.value = t('product.scanCameraError')
+  }
+}
+
+const confirmManual = () => {
+  if (!manualBarcode.value) return
+  form.barcode = manualBarcode.value.trim()
+  scanVisible.value = false
+  stopScan()
+}
 
 // 分页
 const currentPage = ref(1)
@@ -459,10 +659,16 @@ const form = reactive({
   id: null,
   name: '',
   name_kh: '',
+  name_en: '',
+  brand: '',
+  country_of_origin: '',
   category: '',
   unit: '',
-  price_usd: null,
-  retail_price_usd: null,
+  price_usd: '',
+  retail_price_usd: '',
+  price_per_piece_usd: '',
+  price_per_package_usd: '',
+  pieces_per_package: '',
   stock: 0,
   stock_warning: 10,
   description: '',
@@ -474,6 +680,8 @@ const form = reactive({
   img5: '',
   specs: '',
   barcode: '',
+  production_date: null,
+  expiry_date: null,
   sort_order: 0,
   is_active: true,
   is_featured: false,
@@ -483,7 +691,14 @@ const rules = {
   name: [{ required: true, message: () => t('product.nameRequired'), trigger: 'blur' }],
   price_usd: [
     { required: true, message: () => t('product.priceRequired'), trigger: 'blur' },
-    { type: 'number', min: 0.01, message: () => t('product.priceRequired'), trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        const n = parseFloat(value)
+        if (isNaN(n) || n <= 0) callback(new Error(t('product.priceRequired')))
+        else callback()
+      },
+      trigger: 'blur',
+    },
   ],
 }
 
@@ -561,10 +776,16 @@ const resetForm = () => {
     id: null,
     name: '',
     name_kh: '',
+    name_en: '',
+    brand: '',
+    country_of_origin: '',
     category: '',
     unit: '',
-    price_usd: null,
-    retail_price_usd: null,
+    price_usd: '',
+    retail_price_usd: '',
+    price_per_piece_usd: '',
+    price_per_package_usd: '',
+    pieces_per_package: '',
     stock: 0,
     stock_warning: 10,
     description: '',
@@ -576,6 +797,8 @@ const resetForm = () => {
     img5: '',
     specs: '',
     barcode: '',
+    production_date: null,
+    expiry_date: null,
     sort_order: 0,
     is_active: true,
     is_featured: false,
@@ -592,7 +815,15 @@ const handleAdd = () => {
 const handleEdit = (row) => {
   Object.assign(form, {
     ...row,
-    retail_price_usd: row.retail_price_usd || null,
+    name_kh: row.name_kh || '',
+    name_en: row.name_en || '',
+    brand: row.brand || '',
+    country_of_origin: row.country_of_origin || '',
+    retail_price_usd: row.retail_price_usd != null ? String(row.retail_price_usd) : '',
+    price_per_piece_usd: row.price_per_piece_usd != null ? String(row.price_per_piece_usd) : '',
+    price_per_package_usd: row.price_per_package_usd != null ? String(row.price_per_package_usd) : '',
+    pieces_per_package: row.pieces_per_package != null ? String(row.pieces_per_package) : '',
+    price_usd: row.price_usd != null ? String(row.price_usd) : '',
     img1: row.img1 || '',
     img2: row.img2 || '',
     img3: row.img3 || '',
@@ -600,6 +831,8 @@ const handleEdit = (row) => {
     img5: row.img5 || '',
     specs: row.specs || '',
     barcode: row.barcode || '',
+    production_date: row.production_date || null,
+    expiry_date: row.expiry_date || null,
     sort_order: row.sort_order || 0,
     is_featured: row.is_featured || false,
   })
@@ -615,6 +848,17 @@ const handleSubmit = async () => {
     try {
       const payload = { ...form }
       delete payload.id
+      // 将数字字段从字符串转换为数字
+      const floatFields = ['price_usd', 'retail_price_usd', 'price_per_piece_usd', 'price_per_package_usd']
+      const intFields = ['pieces_per_package', 'stock', 'stock_warning', 'sort_order']
+      for (const key of floatFields) {
+        const n = parseFloat(payload[key])
+        payload[key] = isNaN(n) ? null : n
+      }
+      for (const key of intFields) {
+        const n = parseInt(payload[key])
+        payload[key] = isNaN(n) ? null : n
+      }
       // 清理空字符串为null，避免后端验证问题
       for (const key of Object.keys(payload)) {
         if (payload[key] === '') payload[key] = null
@@ -1293,4 +1537,44 @@ onMounted(async () => {
 .inv-stock.inv-ok { color: #67c23a; }
 .inv-stock.inv-warn { color: #E6A23C; }
 .inv-stock.inv-danger { color: #f56c6c; }
+
+.import-tips {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+.template-link {
+  color: #409eff;
+  margin-left: 8px;
+  text-decoration: underline;
+}
+.import-result {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.import-errors {
+  margin: 6px 0 0 16px;
+  color: #f56c6c;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.scan-video {
+  width: 100%;
+  max-height: 60vh;
+  background: #000;
+  border-radius: 4px;
+}
+.scan-error {
+  padding: 12px;
+  color: #f56c6c;
+  background: #fef0f0;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+.scan-manual {
+  margin-top: 12px;
+}
 </style>

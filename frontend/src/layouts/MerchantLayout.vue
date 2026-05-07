@@ -55,7 +55,7 @@
         </el-menu>
       </el-aside>
       
-      <el-main :style="mobile ? { 'padding-bottom': '60px' } : {}">
+      <el-main :style="mobile ? mobileMainStyle : {}">
         <router-view />
       </el-main>
     </el-container>
@@ -86,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { ShoppingCart, ArrowDown, Goods, List, User } from '@element-plus/icons-vue'
@@ -101,6 +101,13 @@ const cartStore = useCartStore()
 const { t } = useI18n()
 const currentLang = ref(getCurrentLanguage())
 const mobile = ref(window.innerWidth < 768)
+
+const mobileMainStyle = computed(() => ({
+  paddingTop: `calc(46px + var(--tg-content-safe-area-inset-top, 0px))`,
+  paddingBottom: `calc(60px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))`,
+  paddingLeft: 'var(--tg-content-safe-area-inset-left, 0px)',
+  paddingRight: 'var(--tg-content-safe-area-inset-right, 0px)',
+}))
 
 const onResize = () => {
   mobile.value = window.innerWidth < 768
@@ -137,7 +144,7 @@ const handleCommand = (command) => {
 
 <style scoped>
 .merchant-layout {
-  height: 100vh;
+  min-height: var(--tg-viewport-stable-height, 100vh);
 }
 
 .el-header {
@@ -222,7 +229,7 @@ const handleCommand = (command) => {
   justify-content: space-between;
   padding: 0 16px;
   position: fixed;
-  top: 0;
+  top: var(--tg-content-safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   z-index: 100;
@@ -243,7 +250,8 @@ const handleCommand = (command) => {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 50px;
+  height: calc(50px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
   background: #fff;
   border-top: 1px solid #eee;
   display: flex;
@@ -288,7 +296,7 @@ const handleCommand = (command) => {
 
 /* === 移动端适配 === */
 .is-mobile .el-main {
-  padding-top: 46px;
+  padding-top: calc(46px + var(--tg-content-safe-area-inset-top, 0px));
 }
 
 @media (max-width: 767px) {
@@ -301,7 +309,7 @@ const handleCommand = (command) => {
   }
 
   .el-main {
-    padding-top: 46px !important;
+    padding-top: calc(46px + var(--tg-content-safe-area-inset-top, 0px)) !important;
   }
 }
 </style>

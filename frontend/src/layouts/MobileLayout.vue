@@ -1,6 +1,6 @@
 <template>
-  <div class="mobile-layout">
-    <div class="mobile-header">
+  <div class="mobile-layout" :class="{ 'has-shell-header': showShellHeader }">
+    <div v-if="showShellHeader" class="mobile-header">
       <img src="/images/logo2.svg" alt="Logo" class="mobile-logo" />
       <button class="lang-switch" @click="toggleLang">
         {{ currentLang === 'zh' ? 'EN' : '中' }}
@@ -29,15 +29,20 @@
 import { ref, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
+import { useUserStore } from '@/stores/user'
 import { hapticFeedback } from '@/utils/device'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 const cartStore = useCartStore()
 
 const activeTab = ref(0)
 const currentLang = ref(getCurrentLanguage())
+
+const routesWithPageNavbar = ['/m/cart', '/m/orders', '/m/profile']
+const showShellHeader = computed(() => !routesWithPageNavbar.some(prefix => route.path.startsWith(prefix)))
 
 const toggleLang = () => {
   const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
@@ -64,7 +69,7 @@ const handleTabChange = (index) => {
 <style scoped>
 .mobile-header {
   position: fixed;
-  top: 0;
+  top: var(--tg-content-safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   height: 46px;
@@ -108,9 +113,24 @@ const handleTabChange = (index) => {
 }
 
 .mobile-layout {
-  min-height: 100vh;
-  padding-top: 46px;
+  min-height: var(--tg-viewport-stable-height, 100vh);
   background: #f5f5f5;
-  padding-bottom: 50px; /* 为底部导航留空间 */
+  padding-bottom: calc(50px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-left: var(--tg-content-safe-area-inset-left, 0px);
+  padding-right: var(--tg-content-safe-area-inset-right, 0px);
+  overflow-x: hidden;
+}
+
+.mobile-layout.has-shell-header {
+  padding-top: calc(46px + var(--tg-content-safe-area-inset-top, 0px));
+}
+
+.mobile-layout:not(.has-shell-header) {
+  padding-top: var(--tg-content-safe-area-inset-top, 0px);
+}
+
+:deep(.van-tabbar) {
+  padding-bottom: var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  height: calc(50px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 </style>

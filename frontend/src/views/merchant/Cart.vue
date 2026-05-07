@@ -16,6 +16,17 @@
     </el-empty>
     
     <template v-else>
+      <div v-if="!userStore.canOrder" class="restriction-panel">
+        <div class="restriction-copy">
+          <div class="restriction-title">{{ restrictionTitle }}</div>
+          <div class="restriction-desc">{{ restrictionDescription }}</div>
+          <div class="restriction-note">{{ cartSavedTip }}</div>
+        </div>
+        <el-button type="warning" @click="goToRestrictionAction">
+          {{ restrictionActionLabel }}
+        </el-button>
+      </div>
+
       <!-- 商品列表 (卡片式) -->
       <div class="cart-list">
         <div
@@ -37,6 +48,9 @@
           <div class="item-info">
             <div class="item-name">{{ item.name }}</div>
             <div v-if="item.name_kh" class="item-name-kh">{{ item.name_kh }}</div>
+            <div v-if="item.purchase_mode && item.purchase_mode !== 'default'" class="item-name-kh">
+              {{ item.purchase_mode === 'piece' ? $t('product.buyByPiece') : $t('product.buyByPackage') }}
+            </div>
             <div class="item-price">
               <span class="price-usd">${{ item.price_usd }}</span>
               <span class="price-khr">{{ formatKHR(usdToKhr(item.price_usd)) }}</span>
@@ -60,12 +74,20 @@
       <!-- 订单信息表单 -->
       <div class="order-section">
         <div class="section-title">{{ $t('cart.deliveryInfo') }}</div>
+        <el-alert
+          v-if="!userStore.canOrder"
+          :title="cartFormTip"
+          type="warning"
+          :closable="false"
+          class="checkout-disabled-tip"
+        />
         <div class="form-group">
           <label>{{ $t('cart.address') }}</label>
           <input
             v-model="orderForm.delivery_address"
             type="text"
             :placeholder="$t('cart.addressPlaceholder')"
+            :disabled="!formEditable"
             class="form-input"
           />
         </div>
@@ -75,6 +97,7 @@
             v-model="orderForm.delivery_phone"
             type="tel"
             :placeholder="$t('cart.phonePlaceholder')"
+            :disabled="!formEditable"
             class="form-input"
           />
         </div>
@@ -84,8 +107,31 @@
             v-model="orderForm.note"
             :placeholder="$t('cart.notePlaceholder')"
             rows="2"
+            :disabled="!formEditable"
             class="form-input"
           ></textarea>
+        </div>
+        <div class="form-group">
+          <label>{{ $t('cart.distanceKm') }}</label>
+          <input
+            v-model.number="orderForm.distance_km"
+            type="number"
+            min="0"
+            step="0.1"
+            :placeholder="$t('cart.distanceKmPlaceholder')"
+            :disabled="!formEditable"
+            class="form-input"
+            @change="estimateFee"
+          />
+        </div>
+        <div class="form-group">
+          <label>{{ $t('cart.scheduledAt') }}</label>
+          <input
+            v-model="orderForm.scheduled_at"
+            type="datetime-local"
+            :disabled="!formEditable"
+            class="form-input"
+          />
         </div>
       </div>
       
@@ -95,17 +141,17 @@
         <div class="payment-options">
           <div
             class="payment-option"
-            :class="{ active: orderForm.payment_status === 'cash' }"
-            @click="orderForm.payment_status = 'cash'"
+            :class="{ active: orderForm.payment_status === 'cash', disabled: !formEditable }"
+            @click="setPaymentStatus('cash')"
           >
             <span class="payment-icon">💵</span>
             <span class="payment-label">{{ $t('cart.cashPayment') }}</span>
           </div>
           <div
-            v-if="userStore.userInfo?.allow_monthly_billing"
+            v-if="userStore.userInfo?.allow_credit"
             class="payment-option"
-            :class="{ active: orderForm.payment_status === 'monthly' }"
-            @click="orderForm.payment_status = 'monthly'"
+            :class="{ active: orderForm.payment_status === 'monthly', disabled: !formEditable }"
+            @click="setPaymentStatus('monthly')"
           >
             <span class="payment-icon">📅</span>
             <span class="payment-label">{{ $t('cart.monthlyPayment') }}</span>
@@ -119,15 +165,16 @@
           <button class="clear-btn" @click="handleClear">{{ $t('common.clear') }}</button>
           <div class="bar-total">
             <span class="bar-count">{{ $t('common.items', { count: cartStore.totalCount }) }}</span>
-            <span class="bar-price">${{ cartStore.totalPrice.toFixed(2) }}</span>
+            <span class="bar-count">{{ $t('cart.deliveryFee') }}: ${{ deliveryFee.toFixed(2) }}</span>
+            <span class="bar-price">${{ (cartStore.totalPrice + deliveryFee).toFixed(2) }}</span>
           </div>
         </div>
         <button
           class="submit-btn"
           :disabled="submitting"
-          @click="handleCheckout"
+          @click="handlePrimaryAction"
         >
-          {{ submitting ? $t('common.submitting') : $t('cart.submitOrder') }}
+          {{ submitting ? $t('common.submitting') : primaryButtonText }}
         </button>
       </div>
     </template>
@@ -135,7 +182,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -143,7 +190,7 @@ import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { Delete, Picture, ArrowLeft } from '@element-plus/icons-vue'
 import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
-import { createOrder } from '@/api'
+import { createOrder, estimateDeliveryFee } from '@/api'
 import { formatKHR, usdToKhr } from '@/utils/format'
 
 const router = useRouter()
@@ -152,12 +199,84 @@ const userStore = useUserStore()
 const { t } = useI18n()
 
 const submitting = ref(false)
+const clientRequestId = ref('')
+const formEditable = computed(() => userStore.canOrder || userStore.orderAccessState === 'incomplete')
 const orderForm = reactive({
   delivery_address: '',
   delivery_phone: '',
   payment_status: 'cash',
   note: '',
+  distance_km: 0,
+  scheduled_at: '',
 })
+const deliveryFee = ref(0)
+
+const restrictionTitle = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteTitle')
+    case 'pending':
+      return t('profile.orderGuidePendingTitle')
+    case 'rejected':
+      return t('profile.orderGuideRejectedTitle')
+    default:
+      return t('cart.checkoutDisabled')
+  }
+})
+
+const restrictionDescription = computed(() => {
+  if (userStore.orderAccessState === 'rejected' && userStore.userInfo?.rejected_reason) {
+    return `${t('profile.rejectedReason')}: ${userStore.userInfo.rejected_reason}. ${t('profile.orderGuideRejectedDesc')}`
+  }
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteDesc')
+    case 'pending':
+      return t('profile.orderGuidePendingDesc')
+    case 'rejected':
+      return t('profile.orderGuideRejectedDesc')
+    default:
+      return t('cart.checkoutDisabled')
+  }
+})
+
+const restrictionActionLabel = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.completeProfileAction')
+    case 'pending':
+      return t('profile.viewApprovalStatusAction')
+    case 'rejected':
+      return t('profile.resubmitForReview')
+    default:
+      return t('cart.submitOrder')
+  }
+})
+
+const cartSavedTip = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('cart.draftInfoTip')
+    case 'pending':
+      return t('cart.savedForApprovalTip')
+    case 'rejected':
+      return t('cart.savedForResubmitTip')
+    default:
+      return t('common.items', { count: cartStore.totalCount })
+  }
+})
+
+const cartFormTip = computed(() => {
+  return formEditable.value ? t('cart.draftInfoTip') : cartSavedTip.value
+})
+
+const primaryButtonText = computed(() => {
+  return userStore.canOrder ? t('cart.submitOrder') : restrictionActionLabel.value
+})
+
+const buildClientRequestId = () => {
+  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
 
 // 自动填充个人资料中的默认地址和电话
 onMounted(() => {
@@ -167,7 +286,18 @@ onMounted(() => {
   if (userStore.userInfo?.phone) {
     orderForm.delivery_phone = userStore.userInfo.phone
   }
+  estimateFee()
 })
+
+const estimateFee = async () => {
+  try {
+    const distance = Number(orderForm.distance_km || 0)
+    const data = await estimateDeliveryFee(distance)
+    deliveryFee.value = Number(data.delivery_fee_usd || 0)
+  } catch {
+    deliveryFee.value = 0
+  }
+}
 
 // 数量变化
 const changeQty = (item, delta) => {
@@ -178,6 +308,14 @@ const changeQty = (item, delta) => {
   }
   if (newQty > item.stock) return
   cartStore.updateQuantity(item.id, newQty)
+}
+
+const setPaymentStatus = (status) => {
+  if (!formEditable.value) {
+    goToRestrictionAction()
+    return
+  }
+  orderForm.payment_status = status
 }
 
 // 删除商品
@@ -206,6 +344,15 @@ const handleClear = async () => {
 
 // 提交订单
 const handleCheckout = async () => {
+  if (submitting.value) {
+    return
+  }
+
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+
   if (cartStore.items.length === 0) {
     ElMessage.warning(t('cart.empty'))
     return
@@ -229,25 +376,48 @@ const handleCheckout = async () => {
   }
   
   submitting.value = true
+  clientRequestId.value = clientRequestId.value || buildClientRequestId()
   try {
     const items = cartStore.items.map((item) => ({
       product_id: item.id,
       quantity: item.quantity,
+      purchase_mode: item.purchase_mode || 'default',
     }))
     
     await createOrder({
       items,
       ...orderForm,
+      distance_km: Number(orderForm.distance_km || 0),
+      scheduled_at: orderForm.scheduled_at ? new Date(orderForm.scheduled_at).toISOString() : null,
+      client_request_id: clientRequestId.value,
     })
     
     ElMessage.success(t('cart.orderSuccess'))
     cartStore.clear()
+    clientRequestId.value = ''
     router.push('/merchant/orders')
   } catch (error) {
-    console.error('提交订单失败:', error)
+    // 修复: 错误已被 request.js 拦截器提示，此处仅打印日志，不清空购物车
+    console.error('[订单] 提交失败:', error)
   } finally {
     submitting.value = false
   }
+}
+
+const goToRestrictionAction = () => {
+  ElMessage.warning(restrictionDescription.value)
+  router.push('/merchant/profile')
+}
+
+const handlePrimaryAction = async () => {
+  if (submitting.value) {
+    return
+  }
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+  await handleCheckout()
 }
 </script>
 
@@ -256,6 +426,36 @@ const handleCheckout = async () => {
   min-height: 100%;
   background: #f7f7f7;
   padding-bottom: 80px;
+}
+
+.restriction-panel {
+  margin: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.restriction-copy {
+  min-width: 0;
+}
+
+.restriction-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ad6800;
+}
+
+.restriction-desc,
+.restriction-note {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8c5a00;
 }
 
 .cart-header {
@@ -455,6 +655,10 @@ const handleCheckout = async () => {
   margin-bottom: 14px;
 }
 
+.checkout-disabled-tip {
+  margin-bottom: 14px;
+}
+
 .form-group {
   margin-bottom: 14px;
 }
@@ -514,6 +718,11 @@ const handleCheckout = async () => {
 
 .payment-option:hover {
   border-color: #409eff;
+}
+
+.payment-option.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .payment-option.active {

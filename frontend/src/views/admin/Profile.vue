@@ -21,40 +21,10 @@
             </el-button>
           </div>
         </el-form-item>
-        <el-form-item :label="$t('profile.phone')">
-          <div class="editable-field">
-            <span class="info-value">{{ userStore.userInfo?.phone || $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('phone', $t('profile.phone'), userStore.userInfo?.phone)">
-              {{ $t('common.edit') }}
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item :label="$t('profile.address')">
-          <div class="editable-field">
-            <span class="info-value">{{ userStore.userInfo?.address || $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('address', $t('profile.address'), userStore.userInfo?.address)">
-              {{ $t('common.edit') }}
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item :label="$t('profile.locationUrl')">
-          <div class="editable-field">
-            <span v-if="userStore.userInfo?.location_url" class="info-value">
-              <a :href="userStore.userInfo.location_url" target="_blank" class="link-text">
-                <el-icon><Location /></el-icon>
-                {{ $t('profile.viewMap') }}
-              </a>
-            </span>
-            <span v-else class="info-value">{{ $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('location_url', $t('profile.locationUrl'), userStore.userInfo?.location_url)">
-              {{ $t('common.edit') }}
-            </el-button>
-          </div>
-        </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- Telegram 设置 -->
+    <!-- Telegram 绑定 -->
     <el-card class="info-card">
       <template #header>
         <div class="card-header">
@@ -62,18 +32,10 @@
         </div>
       </template>
       <el-form label-width="120px" class="profile-form">
-        <el-form-item :label="$t('admin.telegramBotToken')">
+        <el-form-item :label="$t('admin.telegramId')">
           <div class="editable-field">
-            <span class="info-value">{{ userStore.userInfo?.telegram_bot_token ? '••••••' + userStore.userInfo.telegram_bot_token.slice(-6) : $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('telegram_bot_token', $t('admin.telegramBotToken'), userStore.userInfo?.telegram_bot_token)">
-              {{ $t('common.edit') }}
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item :label="$t('admin.telegramChatId')">
-          <div class="editable-field">
-            <span class="info-value">{{ userStore.userInfo?.telegram_chat_id || $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="editField('telegram_chat_id', $t('admin.telegramChatId'), userStore.userInfo?.telegram_chat_id)">
+            <span class="info-value">{{ userStore.userInfo?.telegram_id || $t('profile.notSet') }}</span>
+            <el-button type="primary" link size="small" @click="showTelegramDialog = true">
               {{ $t('common.edit') }}
             </el-button>
           </div>
@@ -112,8 +74,6 @@
           <el-input
             v-model="editValue"
             :placeholder="$t('profile.inputPrefix') + editLabel"
-            :type="editKey === 'address' ? 'textarea' : 'text'"
-            :rows="editKey === 'address' ? 3 : undefined"
             clearable
           />
         </el-form-item>
@@ -121,6 +81,31 @@
       <template #footer>
         <el-button @click="editDialogVisible = false">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="saving" @click="handleSaveProfile">{{ $t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Telegram ID 绑定弹窗 -->
+    <el-dialog
+      v-model="showTelegramDialog"
+      :title="$t('admin.telegramSettings')"
+      :width="mobile ? '92vw' : '420px'"
+    >
+      <el-form label-width="120px">
+        <el-form-item :label="$t('admin.telegramId')">
+          <el-input
+            v-model="telegramIdInput"
+            :placeholder="$t('admin.telegramIdPlaceholder')"
+            clearable
+          />
+        </el-form-item>
+      </el-form>
+      <div class="telegram-tip" style="margin-top: 8px;">
+        <el-icon><InfoFilled /></el-icon>
+        <span>{{ $t('admin.telegramTip') }}</span>
+      </div>
+      <template #footer>
+        <el-button @click="showTelegramDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSaveTelegram">{{ $t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
@@ -153,15 +138,17 @@
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus/es/components/message/index'
-import { Location, InfoFilled } from '@element-plus/icons-vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { updateProfile, changePassword } from '@/api'
+import { updateProfile, changePassword, updateAdminTelegram } from '@/api'
 
 const { t } = useI18n()
 const userStore = useUserStore()
 const saving = ref(false)
 const editDialogVisible = ref(false)
 const showPasswordDialog = ref(false)
+const showTelegramDialog = ref(false)
+const telegramIdInput = ref('')
 
 const mobile = ref(window.innerWidth < 768)
 const onResize = () => { mobile.value = window.innerWidth < 768 }
@@ -190,6 +177,27 @@ const handleSaveProfile = async () => {
     editDialogVisible.value = false
   } catch (error) {
     console.error('Update failed:', error)
+  } finally {
+    saving.value = false
+  }
+}
+
+const handleSaveTelegram = async () => {
+  saving.value = true
+  try {
+    const val = telegramIdInput.value.trim()
+    const telegram_id = val ? parseInt(val) : null
+    if (val && isNaN(telegram_id)) {
+      ElMessage.warning(t('admin.telegramIdInvalid'))
+      saving.value = false
+      return
+    }
+    const updatedUser = await updateAdminTelegram({ telegram_id })
+    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+    ElMessage.success(t('profile.updateSuccess'))
+    showTelegramDialog.value = false
+  } catch (error) {
+    console.error('Telegram bind failed:', error)
   } finally {
     saving.value = false
   }

@@ -18,6 +18,10 @@
           @click="searchKeyword = ''; onSearch()"
         />
       </div>
+      <button class="contact-btn" @click="contactVisible = true">
+        <van-icon name="phone-o" />
+        <span>{{ $t('common.contactUs') }}</span>
+      </button>
     </div>
 
     <!-- 公告栏 -->
@@ -28,6 +32,16 @@
           <span v-for="(n, i) in notices" :key="i" class="notice-item">{{ currentLang === 'zh' ? n.content_zh : n.content_en }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
         </div>
       </div>
+    </div>
+
+    <div v-if="!userStore.canOrder" class="browse-guide">
+      <div class="guide-copy">
+        <div class="guide-title">{{ restrictionTitle }}</div>
+        <div class="guide-desc">{{ restrictionDescription }}</div>
+      </div>
+      <van-button size="small" round type="warning" @click="goToRestrictionAction">
+        {{ restrictionActionLabel }}
+      </van-button>
     </div>
 
     <!-- 新品推荐 -->
@@ -133,7 +147,14 @@
 
           <!-- 加购按钮 -->
           <div class="card-action" @click.stop>
-            <div v-if="getCartQty(product.id) > 0" class="qty-control">
+            <button
+              v-if="!userStore.canOrder"
+              class="add-btn guide-btn"
+              @click="goToRestrictionAction"
+            >
+              {{ restrictionActionLabel }}
+            </button>
+            <div v-else-if="getCartQty(product.id) > 0" class="qty-control">
               <button class="qty-btn" @click="decrementCart(product)">−</button>
               <input
                 v-if="editingQtyId === product.id"
@@ -246,11 +267,37 @@
           <button
             class="detail-add-btn"
             :disabled="currentProduct.stock <= 0"
-            @click="addFromDetail"
+            @click="handleDetailPrimaryAction"
           >
-            {{ $t('product.addToCart') }}
+            {{ userStore.canOrder ? $t('product.addToCart') : restrictionActionLabel }}
           </button>
         </div>
+      </div>
+    </van-popup>
+    <!-- 商品详情弹窗 -->
+    <van-popup
+      v-model:show="contactVisible"
+      position="bottom"
+      round
+      :style="{ padding: '24px 20px 32px' }"
+    >
+      <div class="contact-sheet">
+        <div class="contact-title">{{ $t('common.contactUs') }}</div>
+        <div v-if="!contactInfo.phone && !contactInfo.telegram && !contactInfo.whatsapp" class="contact-empty">
+          联系方式尚未设置
+        </div>
+        <a v-if="contactInfo.phone" :href="'tel:' + contactInfo.phone" class="contact-item">
+          <van-icon name="phone-o" size="20" />
+          <span>{{ contactInfo.phone }}</span>
+        </a>
+        <a v-if="contactInfo.whatsapp" :href="'https://wa.me/' + contactInfo.whatsapp.replace(/\D/g, '')" target="_blank" class="contact-item">
+          <van-icon name="chat-o" size="20" />
+          <span>WhatsApp: {{ contactInfo.whatsapp }}</span>
+        </a>
+        <a v-if="contactInfo.telegram" :href="'https://t.me/' + contactInfo.telegram.replace(/^@/, '')" target="_blank" class="contact-item">
+          <van-icon name="send-gift-o" size="20" />
+          <span>Telegram: {{ contactInfo.telegram }}</span>
+        </a>
       </div>
     </van-popup>
   </div>
@@ -261,14 +308,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showImagePreview } from 'vant'
-import { getProducts, getCategories, getPublicAnnouncements } from '@/api'
+import { getProducts, getCategories, getPublicAnnouncements, getContactInfo } from '@/api'
 import { useCartStore } from '@/stores/cart'
+import { useUserStore } from '@/stores/user'
 import { formatKHR, usdToKhr } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
 import { getCurrentLanguage } from '@/i18n'
 
 const router = useRouter()
 const cartStore = useCartStore()
+const userStore = useUserStore()
 const { t } = useI18n()
 
 const loading = ref(true)
@@ -279,10 +328,64 @@ const categories = ref([{ id: 'all', name: t('product.all') }])
 const notices = ref([])
 const currentLang = ref(getCurrentLanguage())
 
+// 联系我
+const contactVisible = ref(false)
+const contactInfo = ref({ phone: '', telegram: '', whatsapp: '' })
+
+const loadContactInfo = async () => {
+  try {
+    contactInfo.value = await getContactInfo()
+  } catch {
+    // 静默失败
+  }
+}
+
 // 详情弹窗
 const detailVisible = ref(false)
 const currentProduct = ref(null)
 const detailQty = ref(1)
+
+const restrictionTitle = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteTitle')
+    case 'pending':
+      return t('profile.orderGuidePendingTitle')
+    case 'rejected':
+      return t('profile.orderGuideRejectedTitle')
+    default:
+      return t('product.browseOnlyTip')
+  }
+})
+
+const restrictionDescription = computed(() => {
+  if (userStore.orderAccessState === 'rejected' && userStore.userInfo?.rejected_reason) {
+    return `${t('profile.rejectedReason')}：${userStore.userInfo.rejected_reason}。${t('profile.orderGuideRejectedDesc')}`
+  }
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.orderGuideIncompleteDesc')
+    case 'pending':
+      return t('profile.orderGuidePendingDesc')
+    case 'rejected':
+      return t('profile.orderGuideRejectedDesc')
+    default:
+      return t('product.browseOnlyTip')
+  }
+})
+
+const restrictionActionLabel = computed(() => {
+  switch (userStore.orderAccessState) {
+    case 'incomplete':
+      return t('profile.completeProfileAction')
+    case 'pending':
+      return t('profile.viewApprovalStatusAction')
+    case 'rejected':
+      return t('profile.resubmitForReview')
+    default:
+      return t('product.addToCart')
+  }
+})
 
 // 加载分类
 const loadCategories = async () => {
@@ -320,7 +423,9 @@ const filteredProducts = computed(() => {
     const kw = searchKeyword.value.toLowerCase()
     list = list.filter(p =>
       p.name.toLowerCase().includes(kw) ||
-      (p.name_kh && p.name_kh.includes(kw))
+      (p.name_kh && p.name_kh.toLowerCase().includes(kw)) ||
+      (p.name_en && p.name_en.toLowerCase().includes(kw)) ||
+      (p.brand && p.brand.toLowerCase().includes(kw))
     )
   }
   // 推荐商品置顶
@@ -371,6 +476,10 @@ const getCartQty = (id) => {
 
 const incrementCart = (product) => {
   if (product.stock <= 0) return
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
   hapticFeedback('light')
   cartStore.addItem(product, 1)
 }
@@ -430,12 +539,29 @@ const previewImage = (current, images) => {
 
 const addFromDetail = () => {
   if (!currentProduct.value) return
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
   const success = cartStore.addItem(currentProduct.value, detailQty.value)
   if (success) {
     hapticFeedback('success')
     showSuccessToast(t('product.addedToCart'))
     detailVisible.value = false
   }
+}
+
+const goToRestrictionAction = () => {
+  showToast(restrictionDescription.value)
+  router.push('/m/profile')
+}
+
+const handleDetailPrimaryAction = () => {
+  if (!userStore.canOrder) {
+    goToRestrictionAction()
+    return
+  }
+  addFromDetail()
 }
 
 // 加载公告
@@ -454,7 +580,7 @@ const goToCart = () => {
 }
 
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadProducts(), loadNotices()])
+  await Promise.all([loadCategories(), loadProducts(), loadNotices(), loadContactInfo()])
   // 从商品中补充分类
   if (categories.value.length <= 1) {
     const cats = new Set()
@@ -466,9 +592,10 @@ onMounted(async () => {
 
 <style scoped>
 .mobile-shop {
-  min-height: 100vh;
+  min-height: var(--tg-viewport-height, 100vh);
   background: var(--bg-gray, #f7f7f7);
-  padding-bottom: 60px;
+  padding-bottom: calc(60px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  overflow: visible;
 }
 
 /* ---------- 搜索栏 ---------- */
@@ -479,15 +606,70 @@ onMounted(async () => {
   background: #fff;
   padding: 8px 12px;
   border-bottom: 1px solid #F0F0F0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .search-box {
+  flex: 1;
   display: flex;
   align-items: center;
   background: #f5f5f5;
   border-radius: 4px;
   padding: 0 10px;
   height: 36px;
+}
+
+.contact-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 36px;
+  border: 1.5px solid #d44e4e;
+  border-radius: 6px;
+  background: #fff;
+  color: #d44e4e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contact-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.contact-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.contact-empty {
+  text-align: center;
+  color: #aaa;
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8f8f8;
+  border-radius: 10px;
+  color: #1a1a1a;
+  font-size: 15px;
+  text-decoration: none;
+  border: 1px solid #eee;
 }
 
 .search-icon {
@@ -548,6 +730,39 @@ onMounted(async () => {
 .notice-item {
   font-size: 13px;
   color: #ad6800;
+}
+
+.browse-guide {
+  margin: 8px 12px 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guide-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ad6800;
+}
+
+.guide-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8c5a00;
+}
+
+.guide-btn {
+  background: #fa8c16;
 }
 
 @keyframes noticeScroll {

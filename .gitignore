@@ -56,3 +56,12 @@ backend/uploads/thumbnails/*
 
 # ===== Backups =====
 backups/
+
+# ===== Go 编译产物 =====
+backend-go/wholesale
+backend-go/wholesale.exe
+*.tar.gz
+*.zip
+
+# ===== 临时脚本 =====
+check_api.py

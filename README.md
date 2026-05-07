@@ -1,530 +1,502 @@
-# 柬埔寨批发管理系统
+﻿# 柬埔寨批发管理系统
 
 面向柬埔寨批发业务的 B2B 下单与管理系统，支持 PC 管理后台、PC 商户端、移动商户端和 Telegram Mini App 场景。
 
-系统目标不是做一个通用商城，而是围绕批发业务里的几个核心问题展开：价格保护、商户审核、库存安全、信用额度、订单追踪和移动端快速下单。
-
-## 项目简介
-
-本项目采用前后端分离架构：
-
-- 前端使用 Vue 3 + Vite，PC 端基于 Element Plus，移动端基于 Vant。
-- 后端使用 FastAPI + SQLModel，默认运行在 SQLite WAL 模式，也支持通过 `DATABASE_URL` 切换到 PostgreSQL。
-- 登录体系同时支持管理员账号密码登录和 Telegram Mini App 免登录。
-- 商户下单链路内置审核状态校验、权限收口、限流、防重复提交和库存扣减保护。
-
-线上运行环境：
-
 - 线上域名：`https://khmerai.cn`
-- 服务器：Ubuntu
-- 反向代理：Nginx
-- 应用服务：Uvicorn + systemd
+- 服务器：Ubuntu 22.04 / 43.134.13.229
+- 后端语言：**Go 1.22**（Gin + GORM + SQLite，无 CGO，单二进制部署）
 
-## 核心能力
+---
 
-### 双端业务架构
+## 整体架构
 
-- PC 管理端：面向管理员，处理商品、订单、商户、公告、分类和审核流程。
-- PC 商户端：适合办公室或仓库场景，进行商品浏览、购物车编辑和订单查询。
-- 移动商户端：适合 Telegram 内和手机浏览器场景，强调低操作成本和高频下单效率。
-
-### 权限与账号体系
-
-- `super admin`：数据库字段驱动，不再依赖写死用户名判断。
-- `admin`：可管理商品、订单、分类、公告、商户和审核流程。
-- `merchant`：只能访问自己的资料、购物车和自己的订单。
-
-### 商户下单与信用控制
-
-- 支持现结与月结两种支付方式。
-- 商户未审核、资料不完整或被拒绝时不能下单，但可以先浏览商品并保留购物车。
-- 支持商户信用控制、账期展示、未回款天数展示和管理员侧月结管理。
-
-### Telegram 集成
-
-- Telegram Mini App 自动登录。
-- 管理员通知：新订单、库存预警。
-- 商户通知：下单成功、订单完成。
-- 管理员 Telegram 绑定和通知开关已支持。
-
-### 移动端体验优化
-
-- 自动识别移动设备和 Telegram 场景，按设备跳转到对应路由。
-- iPhone 安全区适配、Telegram 视口高度适配。
-- 购物车、订单、个人中心针对移动端做了交互简化。
-- 下单按钮具备 loading 与禁用态，避免弱网下重复点击造成重复下单。
-
-## 技术栈
-
-### 前端
-
-- Vue 3
-- Vite 5
-- Vue Router 4
-- Pinia + pinia-plugin-persistedstate
-- Element Plus
-- Vant 4
-- vue-i18n
-- Axios
-- Sass
-
-### 后端
-
-- FastAPI 0.109.2
-- SQLModel 0.0.16
-- Uvicorn
-- python-jose
-- passlib[bcrypt]
-- Pillow
-- loguru
-
-### 数据与部署
-
-- 默认数据库：SQLite（WAL 模式）
-- 可切换数据库：PostgreSQL
-- Web 服务：Nginx
-- 进程守护：systemd
-- SSL：Let's Encrypt
-
-## 当前实际架构
-
-```text
+```
 用户浏览器 / Telegram Mini App
-            |
-            v
+            │
+            ▼
        Nginx 80/443
-            |
-   +--------+---------+
-   |                  |
-   v                  v
-Vue dist         FastAPI /api
-静态资源         Uvicorn 127.0.0.1:8000
-                      |
-                      v
-                SQLite / PostgreSQL
+            │
+   ┌────────┴─────────┐
+   │                  │
+   ▼                  ▼
+Vue dist          Go /api
+静态资源          Gin 127.0.0.1:8000
+                       │
+                       ▼
+                 SQLite (WAL 模式)
+                 /opt/wholesale/backend/cambodia_wholesale.db
 ```
 
-当前生产目录约定：
+### 三种使用场景
 
-- 前端目录：`/opt/wholesale/frontend/dist`
-- 后端目录：`/opt/wholesale/backend`
-- 虚拟环境：`/opt/wholesale/venv`
-- systemd 服务名：`wholesale`
-- 数据库文件：`/opt/wholesale/backend/cambodia_wholesale.db`
+| 场景 | 路由前缀 | 适配 |
+|---|---|---|
+| PC 管理后台 | `/admin/*` | Element Plus，管理员专用 |
+| PC 商户端 | `/merchant/*` | Element Plus，商户账号 |
+| 移动/Telegram 商户端 | `/m/*` | Vant，手机和 Telegram Mini App |
+
+前端路由守卫会自动识别设备类型，移动设备访问 `/merchant/*` 时自动跳转到 `/m/*`，反之亦然。
+
+---
 
 ## 目录结构
 
-```text
-backend/
-├── app/
-│   ├── api/                 # 路由层：认证、商品、订单、分类、公告、上传、月结
-│   ├── core/                # 配置、数据库、依赖注入、安全、限流、日志
-│   ├── models/              # User、Product、Order、OrderItem 等模型
-│   └── services/            # Telegram 通知、图片处理等业务服务
-├── init_db.py               # 初始化数据库与演示数据
-├── main.py                  # FastAPI 应用入口
-└── requirements.txt
-
-frontend/
-├── public/
-├── src/
-│   ├── api/                 # Axios API 封装
-│   ├── components/          # 骨架屏等基础组件
-│   ├── i18n/                # 中英文文案
-│   ├── layouts/             # Admin / Merchant / Mobile 三套布局
-│   ├── router/              # 路由和守卫
-│   ├── stores/              # user / cart 状态管理
-│   ├── styles/              # 全局样式和变量
-│   ├── utils/               # request、telegram、device、format 等工具
-│   └── views/               # admin / merchant / mobile 页面
-├── index.html
-├── package.json
-└── vite.config.js
-
-deploy/
-├── nginx.conf               # 标准 Nginx 配置
-├── bt_nginx.conf            # 宝塔 Nginx 配置
-├── setup.sh                 # 传统部署初始化脚本
-├── bt_setup.sh              # 宝塔部署脚本
-├── backup_db.sh             # 数据库备份脚本
-├── wholesale.service        # systemd 服务定义
-└── BT_DEPLOY.md             # 宝塔部署文档
+```
+├── backend-go/               # Go 后端（生产使用）
+│   ├── main.go               # 入口：路由注册、中间件挂载、服务启动
+│   ├── go.mod / go.sum
+│   ├── handlers/             # HTTP 处理器，按业务模块划分
+│   │   ├── auth.go           # 登录、注册、用户管理、审核、Telegram 绑定
+│   │   ├── products.go       # 商品 CRUD、条码查询、批量导入
+│   │   ├── orders.go         # 订单创建/查询/取消/配货/配送状态
+│   │   ├── categories.go     # 分类管理
+│   │   ├── announcements.go  # 公告管理
+│   │   ├── billing.go        # 月结账单
+│   │   ├── settings.go       # 系统设置（配送费、联系信息、Telegram）
+│   │   ├── upload.go         # 图片上传（压缩 + 缩略图）
+│   │   └── disk_*.go         # 磁盘空间查询（跨平台）
+│   ├── middleware/           # JWT 认证、角色权限守卫
+│   ├── models/
+│   │   └── models.go         # 全部数据模型（User、Product、Order 等）
+│   ├── database/             # GORM 初始化、迁移
+│   ├── services/
+│   │   ├── notify.go         # Telegram 通知（下单/配送/库存预警）
+│   │   ├── image.go          # 图片处理（disintegration/imaging）
+│   │   └── settings.go       # 系统设置读写服务
+│   ├── config/               # 环境变量读取（godotenv）
+│   ├── utils/                # JWT 生成/验证、密码哈希、随机密码
+│   └── bot/                  # Telegram Bot 消息发送
+│
+├── backend/                  # Python FastAPI 后端（已归档，不再使用）
+│
+├── frontend/                 # Vue 3 前端
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── package.json
+│   └── src/
+│       ├── api/index.js      # 全部 Axios API 封装
+│       ├── components/       # SkeletonProduct、SkeletonTable
+│       ├── i18n/             # 中/英双语（zh.js / en.js）
+│       ├── layouts/          # AdminLayout、MerchantLayout、MobileLayout
+│       ├── router/index.js   # 路由定义 + 设备自动跳转守卫
+│       ├── stores/           # user.js（登录态）、cart.js（购物车持久化）
+│       ├── styles/           # 全局 SCSS、Element Plus 覆盖、变量
+│       ├── utils/            # request、telegram、device、format、colors
+│       └── views/
+│           ├── Login.vue
+│           ├── admin/        # Dashboard、Products、Orders、Merchants...
+│           ├── merchant/     # Products、Cart、Orders、Profile
+│           └── mobile/       # Shop、Cart、Orders、Profile
+│
+├── deploy/                   # 部署相关
+│   ├── wholesale.service     # systemd 服务定义
+│   ├── nginx.conf            # Nginx 配置
+│   ├── bt_nginx.conf         # 宝塔 Nginx 配置
+│   ├── setup.sh              # 传统部署初始化脚本
+│   ├── bt_setup.sh           # 宝塔部署脚本
+│   ├── backup_db.sh          # 数据库定时备份脚本
+│   └── BT_DEPLOY.md          # 宝塔部署文档
+│
+├── .gitignore
+├── README.md
+└── PROJECT_DETAIL.md
 ```
 
-## 功能清单
+---
 
-### 管理端
+## API 路由总览
 
-- 仪表板：销售统计、订单概览、库存预警
-- 商品管理：新增、编辑、上下架、软删除、多图上传字段支持
-- 订单管理：查看订单、更新支付状态、更新配送状态
-- 商户管理：创建用户、重置密码、启停用户、账期和信用控制
-- 超级管理员管理：提升为超级管理员、取消超级管理员
-- 分类管理：分类排序和维护
-- 公告管理：公告内容与展示控制
-- 审核流：商户资料审核、拒绝原因记录
+所有接口以 `/api` 为前缀，分以下权限层级：
+- **公开**：无需 Token
+- **需登录**：JWT Token（管理员 + 商户均可）
+- **管理员**：`role = admin`
+- **超级管理员**：`is_super_admin = true`
 
-### 商户端
+### 认证 `/api/auth`
 
-- 商品浏览、搜索、分类筛选
-- 购物车持久化
-- 提交订单、查看历史订单、取消未完成订单
-- 完善资料、修改密码、查看审核状态
-- Telegram 绑定与通知开关
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| POST | `/login` | 公开 | 用户名密码登录，返回 JWT |
+| POST | `/telegram-auth` | 公开 | Telegram Mini App 免登录 |
+| POST | `/phone-verification/send` | 公开 | 发送手机验证码（存根） |
+| POST | `/phone-verification/verify` | 公开 | 验证手机验证码（存根） |
+| GET | `/me` | 需登录 | 获取当前用户信息 |
+| PATCH | `/me` | 需登录 | 更新当前用户资料 |
+| PATCH | `/me/telegram` | 需登录 | 更新 Telegram ID |
+| POST | `/me/telegram/bind-current` | 需登录 | 绑定 Telegram（验证 initData） |
+| POST | `/change-password` | 需登录 | 修改密码 |
+| POST | `/submit-review` | 需登录 | 商户提交/重新提交资料审核 |
+| GET | `/users` | 管理员 | 用户列表 |
+| POST | `/register` | 管理员 | 创建新用户（返回临时密码） |
+| GET | `/users/:id` | 管理员 | 用户详情 |
+| PATCH | `/users/:id` | 管理员 | 更新用户信息 |
+| DELETE | `/users/:id` | 管理员 | 停用用户 |
+| POST | `/users/:id/approve` | 管理员 | 审核通过/拒绝商户 |
+| GET | `/pending-users` | 管理员 | 待审核用户列表 |
+| GET | `/pending-count` | 管理员 | 待审核用户数量 |
+| GET | `/all-registrations` | 管理员 | 所有注册用户（可按状态筛选） |
+| POST | `/users/:id/reset-password` | 管理员 | 重置密码（返回临时密码） |
+| GET | `/dashboard` | 管理员 | 仪表盘统计 |
+| PATCH | `/users/:id/super-admin` | 超级管理员 | 设置/取消超级管理员 |
 
-### 移动端
+### 商品 `/api/products`
 
-- 商品卡片浏览
-- 购物车全选、分项调整、快捷提交
-- 订单列表筛选、下拉刷新、详情弹层
-- 个人中心资料维护
-- 针对 Telegram Mini App 的视口和安全区适配
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| GET | `` | 需登录 | 商品列表（支持搜索、分类、分页） |
+| GET | `/barcode/:barcode` | 需登录 | 按条码查询商品 |
+| GET | `/:id` | 需登录 | 商品详情 |
+| POST | `` | 管理员 | 新增商品 |
+| GET | `/import/template` | 管理员 | 下载导入模板 CSV |
+| POST | `/import` | 管理员 | 批量导入（待实现） |
+| PATCH | `/:id` | 管理员 | 更新商品 |
+| DELETE | `/:id` | 管理员 | 软删除商品 |
+
+### 订单 `/api/orders`
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| GET | `` | 需登录 | 订单列表（商户只看自己的） |
+| POST | `` | 需登录 | 创建订单（扣库存、幂等校验） |
+| GET | `/picker/items/:orderId` | 需登录 | 配货员视图 |
+| GET | `/:id` | 需登录 | 订单详情 |
+| PATCH | `/:id` | 需登录 | 更新订单 |
+| POST | `/:id/cancel` | 需登录 | 取消订单（仅 pending，恢复库存） |
+| POST | `/:id/pick` | 需登录 | 标记配货完成 |
+| DELETE | `/:id` | 管理员 | 软删除订单（恢复库存） |
+
+### 其他
+
+| 前缀 | 说明 |
+|---|---|
+| `/api/categories` | 分类：公开查询、管理员 CRUD |
+| `/api/announcements` | 公告：公开查询、管理员 CRUD |
+| `/api/billing` | 月结账单：生成、列表、更新 |
+| `/api/settings` | 配送费、联系信息、Telegram Chat ID 管理 |
+| `/api/upload/image` | 图片上传（自动压缩 + 缩略图） |
+
+---
+
+## 核心业务流程
+
+### 1. 商户注册与审核
+
+```
+商户注册（自助 or 管理员代建）
+        │
+        ▼
+   完善个人资料（姓名/电话/地址）
+        │
+        ▼
+   提交审核  POST /api/auth/submit-review
+        │
+        ▼
+   管理员在审核页面处理
+        │
+   ┌────┴────┐
+   ▼         ▼
+通过        拒绝（记录拒绝原因）
+   │
+   ▼
+商户可正常下单
+```
+
+审核状态流转：`pending` → `approved` / `rejected`
+
+未通过审核的商户可浏览商品和使用购物车，提交订单时被拦截。
+
+### 2. 下单流程
+
+```
+商户加购物车（Pinia 持久化）
+        │
+        ▼
+确认地址/电话/备注/付款方式
+前端生成 client_request_id
+        │
+        ▼
+POST /api/orders
+        │
+   后端依次校验：
+   ① 审核状态 approved
+   ② 月结权限
+   ③ 幂等：merchant_id + client_request_id
+   ④ 逐项检查库存
+   ⑤ 原子扣减库存
+   ⑥ 创建订单和明细
+        │
+        ▼
+返回订单详情 + 触发 Telegram 通知
+```
+
+### 3. 配送流程
+
+```
+delivery_status: pending
+        │ 管理员安排配送
+        ▼
+delivery_status: delivering
+（触发 Telegram 通知配送员）
+        │ 配货员标记
+        ▼
+picked_at / picked_by_id 记录
+        │ 完成送货
+        ▼
+delivery_status: delivered
+delivered_at 记录
+```
+
+商户或管理员可在 `pending` 状态下取消订单，库存自动恢复。
+
+### 4. 月结账单
+
+```
+管理员触发  POST /api/billing/generate
+        │
+        ▼
+按月汇总各商户信用订单金额
+生成 MonthlyBill 记录
+        │
+        ▼
+管理员查看/标记已收款
+PATCH /api/billing/:id
+```
+
+---
+
+## 数据模型
+
+### User
+
+| 字段 | 说明 |
+|---|---|
+| `role` | `admin` / `merchant` |
+| `is_super_admin` | 超级管理员标志 |
+| `approval_status` | `pending` / `approved` / `rejected` |
+| `allow_credit` | 是否允许月结 |
+| `billing_cycle_days` | 账期天数 |
+| `credit_limit` | 信用额度（美元） |
+| `telegram_id` | Telegram 用户 ID |
+| `notify_enabled` | 是否接收 Telegram 通知 |
+| `must_change_password` | 首次登录强制改密 |
+| `is_active` | 账号是否启用 |
+
+### Product
+
+| 字段 | 说明 |
+|---|---|
+| `name` / `name_kh` / `name_en` | 中/高棉/英文名 |
+| `brand` | 品牌 |
+| `barcode` | 条码（唯一） |
+| `price_usd` | 批发价（美元） |
+| `stock` | 当前库存 |
+| `is_active` | 是否上架 |
+| `is_deleted` | 软删除标志 |
+
+### Order
+
+| 字段 | 说明 |
+|---|---|
+| `order_no` | 订单号（系统生成，唯一） |
+| `merchant_id` | 所属商户 |
+| `payment_status` | `unpaid` / `cash` / `credit` |
+| `delivery_status` | `pending` / `delivering` / `delivered` / `cancelled` |
+| `client_request_id` | 防重复提交唯一标识 |
+| `picked_at` / `picked_by_id` | 配货时间和操作人 |
+| `delivered_at` | 签收时间 |
+| `is_deleted` | 软删除标志 |
+
+---
 
 ## 权限模型
 
-### 超级管理员
+```
+超级管理员（is_super_admin = true）
+  ├── 拥有管理员全部能力
+  ├── 可设置/取消其他账号的超级管理员状态
+  └── 保护：不能删除/降级最后一个超级管理员
 
-- 拥有管理员全部能力
-- 可管理其他管理员的超级管理员状态
-- 受最后一个超级管理员保护逻辑约束，避免误操作导致系统失去最高权限账号
+普通管理员（role = admin）
+  ├── 管理商品、订单、分类、公告、商户、审核
+  └── 无法操作超级管理员专属功能
 
-### 普通管理员
+商户（role = merchant）
+  ├── 只能访问自己的资料和订单
+  └── 购物车、下单、查看历史、取消未处理订单
+```
 
-- 可管理商户、订单、商品、分类、公告
-- 不应访问超级管理员专属的危险操作
+---
 
-### 商户
+## 安全机制
 
-- 只能访问自己的资料和自己的订单
-- 订单详情查询和取消操作都带商户维度限制
+| 机制 | 实现 |
+|---|---|
+| JWT 认证 | `golang-jwt/jwt v5`，每个受保护请求验证 Token |
+| 密码存储 | bcrypt rounds=12 |
+| 防重复下单 | `merchant_id + client_request_id` 唯一索引 |
+| 库存保护 | 原子 SQL 扣减，避免超卖 |
+| 商户隔离 | 订单 API 全部校验 `merchant_id = current_user_id` |
+| 软删除 | 商品和订单使用 `is_deleted`，历史数据不丢失 |
+| 上传安全 | MIME 类型白名单、UUID 重命名、图片压缩 |
 
-## 安全与反作弊
+---
 
-当前代码已具备以下防护能力：
+## 技术栈
 
-### 接口权限收口
+### 后端（Go 1.22）
 
-- 商户订单列表只返回自己的订单
-- 商户订单详情只允许查询自己的订单
-- 商户取消订单只允许操作自己的订单
-- 管理员接口通过依赖注入进行角色校验
+| 依赖 | 用途 |
+|---|---|
+| `gin-gonic/gin v1.9.1` | HTTP 框架 |
+| `gorm.io/gorm v1.25.10` | ORM |
+| `glebarez/sqlite v1.11.0` | SQLite 纯 Go 驱动（无 CGO） |
+| `golang-jwt/jwt v5.2.1` | JWT 认证 |
+| `golang.org/x/crypto` | bcrypt 密码哈希 |
+| `disintegration/imaging v1.6.2` | 图片压缩和缩略图 |
+| `joho/godotenv v1.5.1` | .env 加载 |
+| `google/uuid v1.6.0` | UUID 生成 |
 
-### 限流
+### 前端
 
-- 全局 IP 速率限制中间件
-- 登录防暴力破解限制
-- 上传接口限流
-- 下单接口专门限流，降低脚本刷单与价格探测风险
+| 依赖 | 用途 |
+|---|---|
+| Vue 3 + Vite 5 | 核心框架 + 构建 |
+| Vue Router 4 | 路由 |
+| Pinia + persistedstate | 状态管理 + 持久化 |
+| Element Plus | PC 端 UI |
+| Vant 4 | 移动端 UI |
+| vue-i18n | 中/英双语 |
+| Axios | HTTP 请求 |
+| Sass | CSS 预处理 |
 
-### 重复下单防护
-
-- 前端提交订单时生成一次性 `client_request_id`
-- 后端按 `merchant_id + client_request_id` 做幂等校验
-- 数据库层有唯一索引兜底
-
-### 数据安全
-
-- `.env` 已被 `.gitignore` 忽略，不会默认提交到版本库
-- 商品与订单增加了软删除语义，避免误删后无法对账
-- 商品库存使用原子扣减，降低并发超卖风险
-- Axios 超时和 401 统一收口处理
-
-### 日志与可观测性
-
-- 使用 loguru 接管错误日志
-- `ERROR` 级别以上日志单独写入 `logs/error.log`
-- 服务异常由 systemd 自动拉起
-
-## 数据模型说明
-
-### 用户模型
-
-用户模型包含以下关键字段：
-
-- `role`：`admin` / `merchant`
-- `is_super_admin`：是否超级管理员
-- `approval_status`：`pending` / `approved` / `rejected`
-- `allow_credit`：是否允许月结
-- `billing_cycle_days`：账期天数
-- `notify_enabled`：是否接收 Telegram 通知
-- `must_change_password`：首次登录是否必须改密
-
-### 商品模型
-
-商品重点字段：
-
-- 名称、分类、单位、规格、条码
-- 批发价、建议零售价
-- 当前库存、库存预警值
-- 推荐位标记
-- `is_active`：是否上架
-- `is_deleted`：是否软删除
-
-### 订单模型
-
-订单重点字段：
-
-- `order_no`：订单号
-- `merchant_id`：商户 ID
-- `payment_status`：未支付 / 现结 / 月结
-- `delivery_status`：待派送 / 送货中 / 已签收 / 已取消
-- `client_request_id`：防重复提交请求号
-- `is_deleted`：软删除标记
+---
 
 ## 本地开发
 
-### 1. 启动后端
+### 启动 Go 后端
 
 ```bash
-cd backend
-
-python -m venv venv
-venv\Scripts\activate
-
-pip install -r requirements.txt
-python init_db.py
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd backend-go
+go mod download
+go run .
+# 默认监听 :8000
 ```
 
-后端默认地址：`http://localhost:8000`
-
-OpenAPI 文档：
-
-- Swagger UI：`http://localhost:8000/docs`
-- ReDoc：`http://localhost:8000/redoc`
-
-### 2. 启动前端
+### 启动前端
 
 ```bash
 cd frontend
 npm install
 npm run dev
+# 默认地址：http://localhost:5173
 ```
 
-前端默认地址：`http://localhost:5173`
-
-### 3. 初始化说明
-
-`python init_db.py` 会执行以下动作：
-
-- 创建数据库表
-- 创建首个超级管理员
-- 创建演示商户
-- 创建演示分类
-- 创建演示商品
-
-## 初始账号与密码策略
-
-系统已不再依赖固定默认密码。
-
-- 超级管理员默认用户名为 `100001`
-- 初始化脚本会为超级管理员生成临时密码，并在控制台输出
-- 演示商户 `merchant1` 也会生成临时密码
-- 管理员后台新建用户或重置密码时，会返回一次性临时密码
-- 所有临时密码都应在首次登录后立即修改
-
-## 环境变量
-
-后端配置位于 `backend/app/core/config.py`，支持 `.env` 覆盖。常用配置如下：
+### 环境变量（`backend-go/.env`）
 
 | 变量 | 说明 | 默认值 |
-| ---- | ---- | ------ |
-| `APP_NAME` | 应用名称 | 柬埔寨批发管理系统 |
-| `APP_VERSION` | 应用版本 | 1.0.0 |
-| `DEBUG` | 调试模式 | false |
-| `DATABASE_URL` | 数据库连接串 | sqlite:///./cambodia_wholesale.db |
-| `SECRET_KEY` | JWT 密钥 | 内置默认值，生产建议显式覆盖 |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token 有效期 | 10080 |
-| `ALLOWED_ORIGINS` | CORS 来源列表 | `[*]` |
-| `TG_BOT_TOKEN` | Telegram Mini App 校验 Token | 当前配置可读到默认值 |
+|---|---|---|
+| `PORT` | 监听端口 | `8000` |
+| `GIN_MODE` | `release` / `debug` | `debug` |
+| `SECRET_KEY` | JWT 签名密钥 | 内置默认（生产必须覆盖） |
+| `DATABASE_PATH` | SQLite 文件路径 | `./cambodia_wholesale.db` |
+| `TG_BOT_TOKEN` | Telegram Mini App 验证 Token | 可选 |
 | `TELEGRAM_BOT_TOKEN` | 通知 Bot Token | 可选 |
-| `TELEGRAM_CHAT_ID` | 默认通知 Chat ID | 可选 |
-| `USD_TO_KHR_RATE` | 汇率 | 4000 |
-
-生产建议：
-
-- 显式配置 `SECRET_KEY`
-- 显式配置 `DATABASE_URL`
-- 按实际域名收紧 `ALLOWED_ORIGINS`
-- 不要把生产 `.env` 提交到版本库
-
-## API 分组
-
-主要 API 路由如下：
-
-- `/api/auth`：登录、注册、Telegram 认证、用户资料、管理员用户管理
-- `/api/products`：商品列表、详情、创建、编辑、软删除
-- `/api/orders`：订单创建、列表、详情、取消、管理员状态更新
-- `/api/categories`：分类管理
-- `/api/announcements`：公告管理
-- `/api/upload`：文件上传
-- `/api/billing`：月结账单相关接口
-
-## 前端交互约定
-
-### 路由切换
-
-- 移动设备访问 `/merchant/*` 会自动跳到 `/m/*`
-- PC 设备访问 `/m/*` 会自动跳回 `/merchant/*`
-- Telegram 环境下会优先尝试自动登录
-
-### 请求层规则
-
-- Axios 默认超时为 15 秒
-- 401 会清空登录态并跳回登录页
-- 错误消息统一由请求层提示
-
-### 购物车与下单
-
-- 购物车数据通过 Pinia 持久化到本地
-- 下单时会立刻进入提交状态并禁用按钮
-- 防止弱网下重复点击造成重复订单
-
-## 部署说明
-
-### 方式一：传统部署
-
-适合标准 Ubuntu 环境。
-
-```bash
-cd /opt/wholesale
-bash deploy/setup.sh
-```
-
-核心文件：
-
-- `deploy/setup.sh`
-- `deploy/nginx.conf`
-- `deploy/wholesale.service`
-
-### 方式二：宝塔部署
-
-适合需要图形化面板的环境。
-
-```bash
-cd /opt/wholesale
-bash deploy/bt_setup.sh
-```
-
-核心文件：
-
-- `deploy/bt_setup.sh`
-- `deploy/bt_nginx.conf`
-- `deploy/BT_DEPLOY.md`
-
-### 生产更新建议流程
-
-推荐顺序：
-
-1. 本地构建前端 `npm run build`
-2. 打包后端和前端发布归档
-3. 上传到服务器 `/tmp`
-4. 解压到 `/opt/wholesale/backend` 和 `/opt/wholesale/frontend`
-5. 重启 `wholesale`
-6. 校验 `/`、`/api` 和关键业务页面
-
-## 备份与恢复
-
-项目自带数据库备份脚本：
-
-- 脚本位置：`deploy/backup_db.sh`
-- 默认备份目录：`/opt/wholesale/backups`
-- 默认保留天数：7 天
-- 支持本地压缩备份
-- 预留了邮件和 SCP 异地同步开关
-
-建议上线前补充：
-
-- 异地对象存储备份
-- 定期恢复演练
-- 上传目录外置存储或挂载独立磁盘
-
-## 上线检查清单
-
-上线前建议至少确认以下事项：
-
-- 管理员和商户账号都可以正常登录
-- 商户资料未审核时不能下单
-- 商户只能看到自己的订单
-- 重复点击下单不会生成重复订单
-- 商品软删除后历史订单仍可正常查看
-- Telegram 新订单通知和库存预警通知正常
-- 备份脚本已配置定时任务
-- 日志目录可写，`logs/error.log` 能正常生成
-
-## 常见问题
-
-### 移动端打开白屏或布局异常
-
-检查项：
-
-1. 是否走到了 `/m/shop`
-2. 是否在 Telegram 或 iPhone 环境下正确拿到视口高度
-3. 是否引入了全局样式和 Vant
-
-### 商户无法下单
-
-常见原因：
-
-1. 资料不完整
-2. 审核状态不是 `approved`
-3. 没有填写地址或电话
-4. 选择了月结但商户没有月结权限
-
-### 订单重复
-
-正常情况下不会重复生成，因为前后端都有防重逻辑。若仍出现重复，需要优先检查：
-
-1. 客户端是否绕过了正常下单流程
-2. 反向代理是否重复转发请求
-3. 数据库唯一索引是否已建立
-
-### 图片 404
-
-检查项：
-
-1. 后端 `uploads` 目录是否存在
-2. Nginx 是否正确映射 `/uploads`
-3. 前端是否使用了正确的图片路径
-
-### 401 后频繁跳登录
-
-检查项：
-
-1. `SECRET_KEY` 是否变动过
-2. 前后端时间是否严重漂移
-3. 浏览器本地缓存的 token 是否已失效
-
-## 后续建议
-
-当前系统已经可用于实际业务，但如果继续向“稳定上线”推进，优先级建议如下：
-
-### 高优先级
-
-1. 为上传目录接入对象存储或独立挂载
-2. 补充 Alembic 正式迁移链路
-3. 增加关键接口自动化测试
-4. 明确生产环境 `.env` 管理方式
-
-### 中优先级
-
-1. Redis 缓存热点商品与统计
-2. WebSocket 实时订单通知
-3. 导出 Excel / PDF
-4. 完善审计日志
-
-### 长期规划
-
-1. 配送员端
-2. 财务报表
-3. 多仓库管理
-4. 小程序或更深度的 Telegram 运营能力
-
-## 许可证
-
-MIT License
+| `USD_TO_KHR_RATE` | 美元兑瑞尔汇率 | `4000` |
 
 ---
 
-构建基础：FastAPI + Vue 3 + Element Plus + Vant  
-设计目标：稳定、易维护、适合批发业务高频操作
+## 编译与部署
+
+### 交叉编译 Linux 二进制
+
+```powershell
+# Windows PowerShell
+$env:GOOS = "linux"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
+go build -o wholesale .
+```
+
+```bash
+# macOS / Linux
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o wholesale .
+```
+
+### 服务器目录约定
+
+| 路径 | 内容 |
+|---|---|
+| `/opt/wholesale/backend/` | Go 二进制、.env、uploads/ |
+| `/opt/wholesale/backend/cambodia_wholesale.db` | SQLite 数据库 |
+| `/opt/wholesale/backend/uploads/` | 用户上传图片 |
+| `/opt/wholesale/frontend/` | Vue dist 静态文件 |
+
+### 更新部署
+
+```bash
+# 1. 本地编译（Windows）
+$env:GOOS="linux"; $env:GOARCH="amd64"; $env:CGO_ENABLED="0"
+go build -o wholesale .
+
+# 2. 上传并重启
+scp wholesale ubuntu@43.134.13.229:/tmp/wholesale_new
+ssh ubuntu@43.134.13.229 "sudo mv /tmp/wholesale_new /opt/wholesale/backend/wholesale && sudo chmod +x /opt/wholesale/backend/wholesale && sudo systemctl restart wholesale"
+```
+
+### systemd 服务（`deploy/wholesale.service`）
+
+```ini
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wholesale/backend
+ExecStart=/opt/wholesale/backend/wholesale
+Restart=always
+RestartSec=5
+Environment=GIN_MODE=release
+```
+
+---
+
+## 数据库备份
+
+```bash
+# 脚本位置：deploy/backup_db.sh
+# 建议通过 cron 每日凌晨执行
+crontab -e
+# 0 3 * * * /opt/wholesale/deploy/backup_db.sh
+```
+
+默认保留最近 7 天备份，输出到 `/opt/wholesale/backups/`。
+
+---
+
+## 初始账号
+
+- 超级管理员用户名：`100001` / `100002`
+- 初始密码由初始化脚本随机生成，首次登录后强制修改
+- 管理员重置密码后，系统返回一次性临时密码，登录后立即修改
+
+---
+
+## 常见问题
+
+**商户无法下单**
+- `approval_status` 必须为 `approved`
+- 资料完整（姓名、电话、地址）
+- 月结付款需要 `allow_credit = true`
+
+**移动端白屏**
+- 确认是否跳转到了 `/m/shop`
+- 检查 Telegram Mini App 视口高度初始化
+- 确认 Vant 全局样式已引入
+
+**订单重复**
+- 前端：下单后按钮立即禁用
+- 后端：`merchant_id + client_request_id` 幂等检查
+- 数据库：唯一索引兜底
+
+**忘记管理员密码**
+```bash
+# 在服务器上直接更新（需要 bcrypt 哈希）
+sqlite3 /opt/wholesale/backend/cambodia_wholesale.db \
+  "UPDATE users SET hashed_password='$HASH' WHERE username='100001';"
+```

@@ -69,7 +69,7 @@
                       'stock-out': product.stock <= 0
                     }"
                   >
-                    {{ product.stock <= 0 ? '缺货' : product.is_low_stock ? '库存紧张' : `库存 ${product.stock}` }}
+                    {{ product.stock <= 0 ? '售罄' : product.is_low_stock ? '库存紧张' : `库存 ${product.stock}` }}
                   </div>
                 </div>
                 

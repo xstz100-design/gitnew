@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 	"wholesale/bot"
 	"wholesale/config"
 	"wholesale/database"
 	"wholesale/handlers"
 	"wholesale/middleware"
+	"wholesale/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,9 +31,27 @@ func main() {
 	// 连接数据库
 	database.Connect(config.C.DatabaseURL)
 
+	// 注入 Bot 登录确认函数（避免 services ↔ handlers 循环引用）
+	services.BotLoginConfirmFunc = handlers.ConfirmBotLoginToken
+
 	// 启动 Bot 长轮询（非阻塞）
 	stopBot := make(chan struct{})
 	go bot.StartPolling(config.C.TGBotToken, stopBot)
+
+	// 每日过期商品预警（启动时立即检查一次，之后每 24 小时）
+	go func() {
+		services.CheckAndNotifyExpiringProducts()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				services.CheckAndNotifyExpiringProducts()
+			case <-stopBot:
+				return
+			}
+		}
+	}()
 
 	// 配置 Gin
 	if os.Getenv("GIN_MODE") == "" {
@@ -84,9 +104,14 @@ func main() {
 	{
 		authPub.POST("/login", handlers.Login)
 		authPub.POST("/telegram-auth", handlers.TelegramAuth)
-		authPub.POST("/phone-verification/send", handlers.SendPhoneVerification)
-		authPub.POST("/phone-verification/verify", handlers.VerifyPhoneCode)
-		authPub.POST("/phone-verification/telegram-verify", handlers.TelegramVerifyPhone)
+		authPub.POST("/telegram-widget-login", handlers.TelegramWidgetLogin)
+		authPub.POST("/telegram-link-login", handlers.TelegramLinkLogin)
+		authPub.POST("/telegram-contact-link", handlers.TelegramContactLink)
+		authPub.POST("/otp/request", handlers.RequestOTP)
+		authPub.POST("/otp/verify", handlers.VerifyOTP)
+		// Bot 深链登录
+		authPub.POST("/bot-login/create", handlers.BotLoginCreate)
+		authPub.GET("/bot-login/verify", handlers.BotLoginVerify)
 	}
 
 	// ── Auth（需登录）
@@ -94,6 +119,7 @@ func main() {
 	{
 		authAuth.GET("/me", handlers.GetMe)
 		authAuth.PATCH("/me", handlers.UpdateMe)
+		authAuth.POST("/setup-credentials", handlers.SetupCredentials)
 		authAuth.PATCH("/me/telegram", handlers.UpdateMeTelegram)
 		authAuth.POST("/me/telegram/bind-current", handlers.BindCurrentTelegram)
 		authAuth.POST("/change-password", handlers.ChangePassword)
@@ -137,6 +163,7 @@ func main() {
 		productsAdmin.POST("", handlers.CreateProduct)
 		productsAdmin.GET("/import/template", handlers.GetImportTemplate)
 		productsAdmin.POST("/import", handlers.ImportProducts)
+		productsAdmin.GET("/expiring", handlers.ListExpiringProducts)
 		productsAdmin.PATCH("/:id", handlers.UpdateProduct)
 		productsAdmin.DELETE("/:id", handlers.DeleteProduct)
 	}
@@ -146,11 +173,15 @@ func main() {
 	{
 		ordersAuth.GET("", handlers.ListOrders)
 		ordersAuth.POST("", handlers.CreateOrder)
-		ordersAuth.GET("/picker/items/:orderId", handlers.GetPickerItems)
 		ordersAuth.GET("/:id", handlers.GetOrder)
 		ordersAuth.PATCH("/:id", handlers.UpdateOrder)
 		ordersAuth.POST("/:id/cancel", handlers.CancelOrder)
-		ordersAuth.POST("/:id/pick", handlers.MarkOrderPicked)
+	}
+	// 配货员专属接口（配货员或管理员均可访问）
+	ordersPicker := api.Group("/orders", middleware.Auth(), middleware.RequirePickerOrAdmin())
+	{
+		ordersPicker.GET("/picker/items/:orderId", handlers.GetPickerItems)
+		ordersPicker.POST("/:id/pick", handlers.MarkOrderPicked)
 	}
 	ordersAdmin := api.Group("/orders", middleware.Auth(), middleware.RequireAdmin())
 	{
@@ -206,6 +237,7 @@ func main() {
 	settingsAuth := api.Group("/settings", middleware.Auth())
 	{
 		settingsAuth.GET("/delivery-fee", handlers.GetDeliveryFee)
+		settingsAuth.POST("/delivery-fee/estimate-by-address", handlers.EstimateDeliveryFeeByAddress)
 	}
 	settingsAdmin := api.Group("/settings", middleware.Auth(), middleware.RequireAdmin())
 	{
@@ -214,6 +246,8 @@ func main() {
 		settingsAdmin.PUT("/role-chat-ids", handlers.UpdateRoleChatIDs)
 		settingsAdmin.GET("/telegram-recent-chats", handlers.GetTelegramRecentChats)
 		settingsAdmin.PATCH("/contact-info", handlers.UpdateContactInfo)
+		settingsAdmin.GET("/google-maps", handlers.GetGoogleMapsSettings)
+		settingsAdmin.PATCH("/google-maps", handlers.UpdateGoogleMapsSettings)
 	}
 
 	// ── 图片上传

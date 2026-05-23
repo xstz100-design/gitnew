@@ -4,10 +4,10 @@
     <el-header v-if="!mobile">
       <div class="header-content">
         <div class="header-left">
-          <img src="/images/logo2.svg" alt="Logo" class="header-logo" />
+          <img src="/images/logo1.svg" alt="Logo" class="header-logo" />
         </div>
         <div class="header-right">
-          <button class="lang-btn" @click="toggleLang">{{ currentLang === 'zh' ? 'EN' : '中文' }}</button>
+          <button class="lang-btn" @click="toggleLang">{{ langLabel }}</button>
           <el-dropdown @command="handleCommand">
             <span class="user-dropdown">
               {{ userStore.userInfo?.full_name }} ({{ $t('admin.admin') }})
@@ -15,7 +15,6 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="profile">{{ $t('admin.myProfile') }}</el-dropdown-item>
                 <el-dropdown-item command="logout">{{ $t('profile.logout') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -26,53 +25,49 @@
 
     <!-- 移动端 header -->
     <div v-if="mobile" class="mobile-header">
-      <img src="/images/logo2.svg" alt="Logo" class="header-logo" />
+      <img src="/images/logo1.svg" alt="Logo" class="header-logo" />
       <button class="lang-btn" @click="toggleLang">{{ currentLang === 'zh' ? 'EN' : '中文' }}</button>
     </div>
     
     <el-container>
       <!-- 桌面端侧边栏 -->
       <el-aside v-if="!mobile" width="200px">
+        <div class="sidebar-logo">
+          <span class="sidebar-title">管理后台</span>
+        </div>
         <el-menu
           :default-active="$route.path"
           router
           class="admin-menu"
         >
-          <el-menu-item index="/admin/dashboard">
-            <el-icon><data-analysis /></el-icon>
-            <span>{{ $t('admin.dashboard') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/products">
-            <el-icon><goods /></el-icon>
-            <span>{{ $t('admin.products') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/orders">
-            <el-icon><list /></el-icon>
-            <span>{{ $t('admin.orders') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/picking">
-            <el-icon><box /></el-icon>
-            <span>{{ $t('picker.title') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/merchants">
-            <el-icon><user /></el-icon>
-            <template #title>
+            <el-menu-item index="/admin/dashboard">
+              <el-icon><data-analysis /></el-icon>
+              <span>{{ $t('admin.dashboard') }}</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/products">
+              <el-icon><goods /></el-icon>
+              <span>{{ $t('admin.products') }}</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/orders">
+              <el-icon><list /></el-icon>
+              <span>{{ $t('admin.orders') }}</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/merchants">
+              <el-icon><user /></el-icon>
               <span>{{ $t('admin.merchants') }}</span>
-              <el-badge v-if="pendingCount > 0" :value="pendingCount" class="menu-badge" />
-            </template>
-          </el-menu-item>
-          <el-menu-item index="/admin/categories">
-            <el-icon><menu /></el-icon>
-            <span>{{ $t('admin.categories') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/announcements">
-            <el-icon><bell /></el-icon>
-            <span>{{ $t('admin.announcements') }}</span>
-          </el-menu-item>
-          <el-menu-item index="/admin/settings">
-            <el-icon><setting /></el-icon>
-            <span>{{ $t('settings.title') }}</span>
-          </el-menu-item>
+            </el-menu-item>
+            <el-menu-item index="/admin/categories">
+              <el-icon><Menu /></el-icon>
+              <span>{{ $t('admin.categories') }}</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/announcements">
+              <el-icon><bell /></el-icon>
+              <span>{{ $t('admin.announcements') }}</span>
+            </el-menu-item>
+            <el-menu-item index="/admin/settings">
+              <el-icon><setting /></el-icon>
+              <span>{{ $t('settings.title') }}</span>
+            </el-menu-item>
         </el-menu>
       </el-aside>
       
@@ -116,9 +111,9 @@
               <el-icon :size="22"><Bell /></el-icon>
               <span>{{ $t('admin.announcements') }}</span>
             </div>
-            <div class="more-item" @click="goTo('/admin/profile')">
-              <el-icon :size="22"><User /></el-icon>
-              <span>{{ $t('admin.myProfile') }}</span>
+            <div class="more-item" @click="goTo('/admin/settings')">
+              <el-icon :size="22"><Setting /></el-icon>
+              <span>{{ $t('settings.title') }}</span>
             </div>
             <div class="more-item logout" @click="handleLogout">
               <el-icon :size="22"><SwitchButton /></el-icon>
@@ -135,11 +130,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { ArrowDown, DataAnalysis, Goods, List, User, Menu, Bell, MoreFilled, SwitchButton, Box, Setting } from '@element-plus/icons-vue'
+import { ArrowDown, DataAnalysis, Goods, List, User, Menu, Bell, MoreFilled, SwitchButton, Setting } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
-import { getPendingCount } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -148,8 +142,6 @@ const { t } = useI18n()
 const currentLang = ref(getCurrentLanguage())
 const mobile = ref(window.innerWidth < 768)
 const showMore = ref(false)
-const pendingCount = ref(0)
-let pendingTimer = null
 
 const mobileMainStyle = computed(() => ({
   paddingTop: `calc(46px + var(--tg-content-safe-area-inset-top, 0px))`,
@@ -159,41 +151,28 @@ const mobileMainStyle = computed(() => ({
 }))
 
 const isMoreActive = computed(() => {
-  return ['/admin/categories', '/admin/announcements'].includes(route.path)
+  return ['/admin/categories', '/admin/announcements', '/admin/settings'].includes(route.path)
 })
 
 const onResize = () => {
   mobile.value = window.innerWidth < 768
 }
 
-const loadPendingCount = async () => {
-  try {
-    const data = await getPendingCount()
-    pendingCount.value = data.count
-  } catch (error) {
-    // 静默失败
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('resize', onResize)
-  loadPendingCount()
-  // 定时刷新待审核数量(每60秒)
-  pendingTimer = setInterval(loadPendingCount, 60000)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', onResize)
-  if (pendingTimer) {
-    clearInterval(pendingTimer)
-  }
-})
+onMounted(() => { window.addEventListener('resize', onResize) })
+onUnmounted(() => { window.removeEventListener('resize', onResize) })
 
 const toggleLang = () => {
-  const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
+  const order = ['zh', 'en', 'kh']
+  const idx = order.indexOf(currentLang.value)
+  const newLang = order[(idx + 1) % order.length]
   setLanguage(newLang)
   currentLang.value = newLang
 }
+
+const langLabel = computed(() => {
+  const next = { zh: 'EN', en: 'ខ្មែរ', kh: '中文' }
+  return next[currentLang.value] || 'EN'
+})
 
 const goTo = (path) => {
   showMore.value = false
@@ -215,8 +194,6 @@ const handleLogout = () => {
 const handleCommand = (command) => {
   if (command === 'logout') {
     handleLogout()
-  } else if (command === 'profile') {
-    router.push('/admin/profile')
   }
 }
 </script>
@@ -227,10 +204,24 @@ const handleCommand = (command) => {
 }
 
 .el-header {
-  background: #545c64;
-  color: white;
+  background: #ffffff;
+  color: #1a1a1a;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid #eef0f3;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  position: relative;
+}
+
+.el-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
+  opacity: 0.85;
 }
 
 .header-content {
@@ -260,10 +251,10 @@ const handleCommand = (command) => {
 
 .lang-btn {
   padding: 4px 12px;
-  border: 1px solid rgba(255,255,255,0.5);
+  border: 1px solid #d9dde3;
   border-radius: 4px;
-  background: transparent;
-  color: #fff;
+  background: #fff;
+  color: #1a1a1a;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -271,21 +262,39 @@ const handleCommand = (command) => {
 }
 
 .lang-btn:hover {
-  background: rgba(255,255,255,0.15);
-  border-color: #fff;
+  background: #f0f6ff;
+  border-color: #1d4ed8;
+  color: #1d4ed8;
 }
 
 .user-dropdown {
-  color: white;
+  color: #1a1a1a;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 5px;
+  font-weight: 500;
 }
 
 .el-aside {
   background: #f5f7fa;
   border-right: 1px solid #e4e7ed;
+}
+
+.sidebar-logo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #e4e7ed;
+  background: #fff;
+}
+
+.sidebar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d4ed8;
+  letter-spacing: 2px;
 }
 
 .admin-menu {
@@ -299,7 +308,7 @@ const handleCommand = (command) => {
 /* ========== 移动端 header ========== */
 .mobile-header {
   height: 46px;
-  background: #545c64;
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -309,6 +318,17 @@ const handleCommand = (command) => {
   left: 0;
   right: 0;
   z-index: 100;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.mobile-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
 }
 
 .mobile-header .header-logo {
@@ -348,7 +368,7 @@ const handleCommand = (command) => {
 }
 
 .mobile-tabbar .tab-item.active {
-  color: #545c64;
+  color: #1d4ed8;
 }
 
 /* ========== 更多菜单 ========== */

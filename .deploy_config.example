@@ -1,0 +1,33 @@
+# =====================================================
+# 部署配置模板 — 复制为 .deploy_config 并填写真实值
+# .deploy_config 已被 gitignore，不会被提交到仓库
+# =====================================================
+
+# --- 目标服务器 ---
+HOST="your.server.ip.address"
+PORT=22
+USER="ubuntu"
+
+# --- 认证方式（密码 或 SSH密钥路径 二选一） ---
+# 使用密码：
+PASSWORD="your_password_here"
+# 使用 SSH 密钥（注释掉上面 PASSWORD，取消下面注释）：
+# SSH_KEY_PATH="~/.ssh/id_rsa"
+
+# --- 项目路径 ---
+# 前端构建产物会上传到远端这个目录
+REMOTE_FRONTEND_DIR="/opt/wholesale/frontend/dist"
+
+# Go 二进制文件会上传到远端这个目录
+REMOTE_BACKEND_DIR="/opt/wholesale/backend"
+
+# --- 后端 systemd 服务名（用于重启） ---
+BACKEND_SERVICE="wholesale"
+
+# --- 本地项目路径（通常无需修改） ---
+LOCAL_FRONTEND_DIR="./frontend"
+LOCAL_BACKEND_DIR="./backend-go"
+
+# --- 部署选项 ---
+# 部署前是否运行 npm install / go mod download
+UPDATE_DEPS=false

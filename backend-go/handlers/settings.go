@@ -1,11 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
+	"math"
 	"net/http"
-	"wholesale/config"
 	"wholesale/services"
 
 	"github.com/gin-gonic/gin"
@@ -13,19 +10,19 @@ import (
 
 type DeliveryFeeUpdateRequest struct {
 	FreeDistance float64 `json:"free_distance_km"`
-	FeePerKM     float64 `json:"fee_per_km_usd"`
+	FeePerKM     float64 `json:"fee_per_extra_km_usd"`
 }
 
 type DeliveryFeeEstimateRequest struct {
-	DistanceKM float64 `json:"distance_km" binding:"required"`
+	DistanceKM float64 `json:"distance_km" binding:"min=0"`
 }
 
 // GET /api/settings/delivery-fee
 func GetDeliveryFee(c *gin.Context) {
 	free, fee := services.GetDeliveryFeeSettings()
 	c.JSON(http.StatusOK, gin.H{
-		"free_distance_km": free,
-		"fee_per_km_usd":   fee,
+		"free_distance_km":     free,
+		"fee_per_extra_km_usd": fee,
 	})
 }
 
@@ -38,8 +35,8 @@ func UpdateDeliveryFee(c *gin.Context) {
 	}
 	services.SaveDeliveryFeeSettings(req.FreeDistance, req.FeePerKM)
 	c.JSON(http.StatusOK, gin.H{
-		"free_distance_km": req.FreeDistance,
-		"fee_per_km_usd":   req.FeePerKM,
+		"free_distance_km":     req.FreeDistance,
+		"fee_per_extra_km_usd": req.FeePerKM,
 	})
 }
 
@@ -60,105 +57,34 @@ func EstimateDeliveryFee(c *gin.Context) {
 
 // GET /api/settings/role-chat-ids
 func GetRoleChatIDs(c *gin.Context) {
-	picker, delivery := services.GetRoleChatIDs("", "")
 	c.JSON(http.StatusOK, gin.H{
-		"picker_chat_id":   picker,
-		"delivery_chat_id": delivery,
+		"group_chat_id":       services.GetGroupChatID(),
+		"delivery_group_link": services.GetDeliveryGroupLink(),
 	})
 }
 
 // PUT /api/settings/role-chat-ids
 func UpdateRoleChatIDs(c *gin.Context) {
 	var req struct {
-		PickerChatID   string `json:"picker_chat_id"`
-		DeliveryChatID string `json:"delivery_chat_id"`
+		GroupChatID       string `json:"group_chat_id"`
+		DeliveryGroupLink string `json:"delivery_group_link"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
 		return
 	}
-	services.SaveRoleChatIDs(req.PickerChatID, req.DeliveryChatID)
+	services.SaveGroupChatID(req.GroupChatID)
+	services.SaveDeliveryGroupLink(req.DeliveryGroupLink)
 	c.JSON(http.StatusOK, gin.H{
-		"picker_chat_id":   req.PickerChatID,
-		"delivery_chat_id": req.DeliveryChatID,
+		"group_chat_id":       req.GroupChatID,
+		"delivery_group_link": req.DeliveryGroupLink,
 	})
 }
 
-// GET /api/settings/telegram-recent-chats — 调用 Telegram getUpdates 获取最近 chat 列表
+// GET /api/settings/telegram-recent-chats — 从 DB 缓存读取近期 chat 列表
 func GetTelegramRecentChats(c *gin.Context) {
-	token := config.C.TGBotToken
-	if token == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "TG_BOT_TOKEN 未配置"})
-		return
-	}
-
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?limit=100", token)
-	resp, err := http.Get(apiURL) //nolint:gosec
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"detail": "无法连接 Telegram API"})
-		return
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "解析响应失败"})
-		return
-	}
-
-	// 提取唯一的 chat 信息
-	chats := map[string]interface{}{}
-	if updates, ok := result["result"].([]interface{}); ok {
-		for _, u := range updates {
-			upd, ok := u.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			// 检查 message 或 callback_query
-			for _, key := range []string{"message", "callback_query"} {
-				msg, ok := upd[key].(map[string]interface{})
-				if !ok {
-					continue
-				}
-				chatData, ok := msg["chat"].(map[string]interface{})
-				if !ok {
-					// callback_query 下是 message.chat
-					if innerMsg, ok := msg["message"].(map[string]interface{}); ok {
-						chatData, _ = innerMsg["chat"].(map[string]interface{})
-					}
-				}
-				if chatData == nil {
-					continue
-				}
-				if chatID, ok := chatData["id"]; ok {
-					idStr := fmt.Sprintf("%v", chatID)
-					if _, exists := chats[idStr]; !exists {
-						title := ""
-						if t, ok := chatData["title"].(string); ok {
-							title = t
-						} else if fn, ok := chatData["first_name"].(string); ok {
-							title = fn
-							if ln, ok := chatData["last_name"].(string); ok {
-								title += " " + ln
-							}
-						}
-						chats[idStr] = map[string]interface{}{
-							"chat_id": idStr,
-							"title":   title,
-							"type":    chatData["type"],
-						}
-					}
-				}
-			}
-		}
-	}
-
-	chatList := make([]interface{}, 0, len(chats))
-	for _, v := range chats {
-		chatList = append(chatList, v)
-	}
-	c.JSON(http.StatusOK, gin.H{"chats": chatList})
+	chats := services.GetRecentChats()
+	c.JSON(http.StatusOK, gin.H{"chats": chats})
 }
 
 // GET /api/settings/contact-info — 公开
@@ -168,6 +94,7 @@ func GetContactInfo(c *gin.Context) {
 		"phone":    info.Phone,
 		"telegram": info.Telegram,
 		"whatsapp": info.Whatsapp,
+		"wechat":   info.Wechat,
 	})
 }
 
@@ -177,6 +104,7 @@ func UpdateContactInfo(c *gin.Context) {
 		Phone    *string `json:"phone"`
 		Telegram *string `json:"telegram"`
 		Whatsapp *string `json:"whatsapp"`
+		Wechat   *string `json:"wechat"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
@@ -187,6 +115,7 @@ func UpdateContactInfo(c *gin.Context) {
 	phone := current.Phone
 	tg := current.Telegram
 	wa := current.Whatsapp
+	wc := current.Wechat
 	if req.Phone != nil {
 		phone = *req.Phone
 	}
@@ -196,10 +125,105 @@ func UpdateContactInfo(c *gin.Context) {
 	if req.Whatsapp != nil {
 		wa = *req.Whatsapp
 	}
-	info := services.SaveContactInfo(phone, tg, wa)
+	if req.Wechat != nil {
+		wc = *req.Wechat
+	}
+	info := services.SaveContactInfo(phone, tg, wa, wc)
 	c.JSON(http.StatusOK, gin.H{
 		"phone":    info.Phone,
 		"telegram": info.Telegram,
 		"whatsapp": info.Whatsapp,
+		"wechat":   info.Wechat,
+	})
+}
+
+// GET /api/settings/google-maps  — 管理员
+func GetGoogleMapsSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"api_key":       services.GetGoogleMapsKey(),
+		"warehouse_lat": services.GetWarehouseLat(),
+		"warehouse_lng": services.GetWarehouseLng(),
+	})
+}
+
+// PATCH /api/settings/google-maps  — 管理员
+func UpdateGoogleMapsSettings(c *gin.Context) {
+	var req struct {
+		APIKey       *string `json:"api_key"`
+		WarehouseLat *string `json:"warehouse_lat"`
+		WarehouseLng *string `json:"warehouse_lng"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+	if req.APIKey != nil {
+		services.SaveGoogleMapsKey(*req.APIKey)
+	}
+	if req.WarehouseLat != nil && req.WarehouseLng != nil {
+		services.SaveWarehouseCoords(*req.WarehouseLat, *req.WarehouseLng)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"api_key":       services.GetGoogleMapsKey(),
+		"warehouse_lat": services.GetWarehouseLat(),
+		"warehouse_lng": services.GetWarehouseLng(),
+	})
+}
+
+// POST /api/settings/delivery-fee/estimate-by-address （已登录可用）
+func EstimateDeliveryFeeByAddress(c *gin.Context) {
+	var req struct {
+		Origin      string `json:"origin"` // 可不传，空时自动用仓库坐标
+		Destination string `json:"destination" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	// 如果未传起点，使用仓库坐标
+	if req.Origin == "" {
+		lat := services.GetWarehouseLat()
+		lng := services.GetWarehouseLng()
+		if lat != "" && lng != "" {
+			req.Origin = lat + "," + lng
+		}
+	}
+
+	// ── 优先尝试 Haversine（当 origin/destination 均为坐标时，无需 API Key）──
+	originLat, originLng, originIsCoord := services.IsCoordString(req.Origin)
+	destLat, destLng, destIsCoord := services.IsCoordString(req.Destination)
+	if originIsCoord && destIsCoord {
+		distKM := services.HaversineKM(originLat, originLng, destLat, destLng)
+		// 实际道路距离约为直线距离 * 1.3（城市系数）
+		distKM = distKM * 1.3
+		// 保留1位小数
+		distKM = math.Round(distKM*10) / 10
+		free, feePerKM := services.GetDeliveryFeeSettings()
+		result := services.CalculateDeliveryFee(distKM, free, feePerKM)
+		c.JSON(http.StatusOK, gin.H{
+			"distance_km":      distKM,
+			"delivery_fee_usd": result,
+		})
+		return
+	}
+
+	// ── 回退到 Google Maps Distance Matrix API ──
+	apiKey := services.GetGoogleMapsKey()
+	distKM, err := services.GetDistanceKM(req.Origin, req.Destination, apiKey)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"distance_km":      0,
+			"delivery_fee_usd": 0,
+			"warning":          "无法获取实际距离，请手动填写距离",
+		})
+		return
+	}
+
+	free, feePerKM := services.GetDeliveryFeeSettings()
+	result := services.CalculateDeliveryFee(distKM, free, feePerKM)
+	c.JSON(http.StatusOK, gin.H{
+		"distance_km":      distKM,
+		"delivery_fee_usd": result,
 	})
 }

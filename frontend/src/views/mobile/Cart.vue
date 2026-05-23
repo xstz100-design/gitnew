@@ -1,6 +1,13 @@
 <template>
   <div class="mobile-cart">
-    <van-nav-bar :title="$t('cart.title')" :left-text="$t('common.back')" left-arrow fixed placeholder @click-left="handleBack" />
+    <van-nav-bar left-arrow fixed placeholder @click-left="handleBack">
+      <template #title>
+        <img src="/images/logo2.svg" alt="logo" class="cart-logo" />
+      </template>
+      <template v-if="cartStore.items.length > 0" #right>
+        <span class="clear-cart-btn" @click="clearCart">{{ $t('cart.clearCart') }}</span>
+      </template>
+    </van-nav-bar>
     
     <van-empty v-if="cartStore.items.length === 0" :description="$t('cart.empty')">
       <van-button type="primary" round @click="$router.push('/m/shop')">
@@ -19,7 +26,7 @@
       </div>
 
       <!-- 商铺信息 -->
-      <van-cell-group inset style="margin-top: 10px">
+      <van-cell-group inset>
         <van-cell :title="$t('cart.wholesaleShop')" is-link />
       </van-cell-group>
       
@@ -42,6 +49,9 @@
             <div class="item-info">
               <div class="item-name">{{ item.name }}</div>
               <div v-if="item.name_kh" class="item-name-kh">{{ item.name_kh }}</div>
+              <div v-if="item.purchase_mode && item.purchase_mode !== 'default'" class="item-mode-tag">
+                {{ item.purchase_mode === 'piece' ? (item.display_unit || '件购') : (item.display_unit || '箱购') }}
+              </div>
               
               <div class="item-price">
                 <span class="price-usd">${{ item.price_usd }}</span>
@@ -85,6 +95,7 @@
           :placeholder="$t('cart.addressPlaceholder')"
           :readonly="!formEditable"
           clearable
+          @focus="handleInputFocus"
         />
         <van-field
           v-model="orderForm.delivery_phone"
@@ -93,6 +104,7 @@
           :placeholder="$t('cart.phonePlaceholder')"
           :readonly="!formEditable"
           clearable
+          @focus="handleInputFocus"
         />
         <van-field
           v-model="orderForm.note"
@@ -104,9 +116,63 @@
           autosize
           maxlength="200"
           show-word-limit
+          @focus="handleInputFocus"
+        />
+        <!-- 配送距离 & 运费（自动估算，只读） -->
+        <van-field
+          v-model="distanceInput"
+          :label="$t('cart.distanceKm')"
+          :placeholder="estimatingFee ? $t('cart.estimating') : '--'"
+          type="number"
+          readonly
+        />
+        <van-cell :title="$t('cart.deliveryFee')">
+          <template #value>
+            <span v-if="estimatingFee" style="color:#999">{{ $t('cart.estimating') }}</span>
+            <span v-else-if="deliveryFee !== null" style="color:#ee0a24;font-weight:600">${{ deliveryFee.toFixed(2) }}</span>
+            <span v-else style="color:#999">--</span>
+          </template>
+          <template v-if="autoEstimated && !estimatingFee" #label>
+            <span style="font-size:11px;color:#52c41a">📍 {{ $t('cart.autoEstimated') }}</span>
+          </template>
+        </van-cell>
+      </van-cell-group>
+
+      <!-- 预约配送时间 -->
+      <van-cell-group inset>
+        <van-field
+          v-model="scheduledAtDisplay"
+          :label="$t('cart.scheduledAt')"
+          :placeholder="$t('cart.scheduledAtPlaceholder')"
+          readonly
+          is-link
+          :disabled="!formEditable"
+          @click="formEditable && (showDatePicker = true)"
         />
       </van-cell-group>
-      
+
+      <!-- 预约时间选择弹窗：第一步选日期 -->
+      <van-popup v-model:show="showDatePicker" teleport="body" position="bottom" round>
+        <van-date-picker
+          v-model="pickerDate"
+          :min-date="minDate"
+          :title="$t('cart.scheduledAt') + ' — 1/2 选日期'"
+          @confirm="onDatePickerConfirm"
+          @cancel="showDatePicker = false"
+        />
+      </van-popup>
+
+      <!-- 预约时间选择弹窗：第二步选小时 -->
+      <van-popup v-model:show="showTimePicker" teleport="body" position="bottom" round>
+        <van-time-picker
+          v-model="pickerTime"
+          :columns-type="['hour']"
+          :title="pickerDateValues.join('-') + ' — 2/2 选时间'"
+          @confirm="onTimePickerConfirm"
+          @cancel="showTimePicker = false"
+        />
+      </van-popup>
+
       <!-- 支付方式 -->
       <van-cell-group inset>
         <van-cell :title="$t('cart.paymentMethod')" :is-link="formEditable" @click="openPaymentPicker">
@@ -121,6 +187,7 @@
       <!-- 支付方式选择弹窗 -->
       <van-action-sheet
         v-model:show="showPaymentPicker"
+        teleport="body"
         :actions="paymentActions"
         :cancel-text="$t('common.cancel')"
         @select="onPaymentSelect"
@@ -128,7 +195,7 @@
       
       <!-- 底部结算栏 -->
       <van-submit-bar
-        :price="totalPrice * 100"
+        :price="totalWithFee * 100"
         :button-text="primaryButtonText"
         @submit="handlePrimaryAction"
         :loading="submitting"
@@ -136,7 +203,8 @@
       >
         <van-checkbox v-model="checkAll">{{ $t('cart.selectAll') }}</van-checkbox>
         <template #tip>
-          {{ footerTipText }}
+          <span v-if="deliveryFee !== null">{{ $t('cart.itemsAndFee', { count: checkedItems.length, fee: deliveryFee.toFixed(2) }) }}</span>
+          <span v-else>{{ footerTipText }}</span>
         </template>
       </van-submit-bar>
     </template>
@@ -147,10 +215,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { showSuccessToast, showDialog } from 'vant'
+import { showSuccessToast, showToast, showDialog } from 'vant'
 import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
-import { createOrder } from '@/api'
+import { createOrder, estimateDeliveryFee, estimateDeliveryFeeByAddress } from '@/api'
 import { formatKHR, usdToKhr } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
 
@@ -160,12 +228,124 @@ const cartStore = useCartStore()
 const userStore = useUserStore()
 
 const checkedItems = ref(cartStore.items.map(item => item.id))
-const checkAll = ref(true)
+const checkAll = computed({
+  get: () => cartStore.items.length > 0 && checkedItems.value.length === cartStore.items.length,
+  set: (val) => { checkedItems.value = val ? cartStore.items.map(item => item.id) : [] },
+})
 const submitting = ref(false)
 const clientRequestId = ref('')
 const showPaymentPicker = ref(false)
+const showDatePicker = ref(false)
+const showTimePicker = ref(false)
+const pickerDate = ref([])
+const pickerTime = ref([])
+const pickerDateValues = ref([]) // 存储第一步选中的 [y, m, d]
+const minDate = new Date()
+const scheduledAtDisplay = ref('')
+
+// 第一步：选完日期后自动弹出小时选择器
+const onDatePickerConfirm = ({ selectedValues }) => {
+  pickerDateValues.value = selectedValues // [year, month, day]
+  showDatePicker.value = false
+  showTimePicker.value = true
+}
+
+// 第二步：选完小时后合并并提交
+const onTimePickerConfirm = ({ selectedValues }) => {
+  const [y, m, d] = pickerDateValues.value
+  const [h] = selectedValues
+  const hPadded = String(h).padStart(2, '0')
+  scheduledAtDisplay.value = `${y}-${m}-${d} ${hPadded}:00`
+  orderForm.value.scheduled_at = `${y}-${m}-${d}T${hPadded}:00:00+07:00`
+  showTimePicker.value = false
+}
+
+// 运费估算
+const distanceInput = ref('')
+const deliveryFee = ref(null)
+const estimatingFee = ref(false)
+const autoEstimated = ref(false)
+let estimateDebounceTimer = null
+
+const doEstimateFee = async () => {
+  const km = parseFloat(distanceInput.value)
+  if (isNaN(km) || km < 0) return
+  estimatingFee.value = true
+  try {
+    const res = await estimateDeliveryFee(km)
+    deliveryFee.value = res.fee ?? res.delivery_fee ?? res.amount ?? null
+  } catch {
+    deliveryFee.value = null
+  } finally {
+    estimatingFee.value = false
+  }
+}
+
+const handleDistanceBlur = () => {
+  if (distanceInput.value !== '') {
+    autoEstimated.value = false
+    doEstimateFee()
+  }
+}
+
+// 根据用户保存的 Google 定位自动估算运费
+const autoEstimateFromLocation = async () => {
+  const locationUrl = userStore.userInfo?.location_url
+  if (!locationUrl) return
+  const m = locationUrl.match(/[?&]q=([-\d.]+),([-\d.]+)/)
+  if (!m) return
+  const destination = `${m[1]},${m[2]}`
+  estimatingFee.value = true
+  try {
+    const res = await estimateDeliveryFeeByAddress('', destination)
+    if (res.warning) {
+      // API 无法获取实际距离，不覆盖现有值
+      return
+    }
+    if (res.distance_km !== undefined) distanceInput.value = String(Number(res.distance_km).toFixed(1))
+    deliveryFee.value = res.delivery_fee_usd ?? null
+    autoEstimated.value = true
+  } catch {
+    // 静默失败，用户可手动填写距离
+  } finally {
+    estimatingFee.value = false
+  }
+}
+
+// 根据配送地址文本自动估算（无 location_url 时的兜底）
+const autoEstimateFromAddress = async (address) => {
+  if (!address || address.trim().length < 5) return
+  estimatingFee.value = true
+  try {
+    const res = await estimateDeliveryFeeByAddress('', address.trim())
+    if (res.warning) {
+      // API 无法解析地址，不覆盖现有值
+      return
+    }
+    if (res.distance_km !== undefined) distanceInput.value = String(Number(res.distance_km).toFixed(1))
+    deliveryFee.value = res.delivery_fee_usd ?? null
+    autoEstimated.value = true
+  } catch {
+    // 静默失败
+  } finally {
+    estimatingFee.value = false
+  }
+}
+
+const totalWithFee = computed(() => {
+  const base = cartStore.items
+    .filter(item => checkedItems.value.includes(item.id))
+    .reduce((sum, item) => sum + item.price_usd * item.quantity, 0)
+  return base + (deliveryFee.value ?? 0)
+})
 
 const formEditable = computed(() => userStore.canOrder || userStore.orderAccessState === 'incomplete')
+
+const handleInputFocus = (e) => {
+  setTimeout(() => {
+    if (e?.target) e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, 300)
+}
 
 const restrictionTitle = computed(() => {
   switch (userStore.orderAccessState) {
@@ -266,9 +446,10 @@ const orderForm = ref({
   delivery_phone: '',
   payment_status: 'cash',
   note: '',
+  scheduled_at: null,
 })
 
-// 自动填充个人资料中的默认地址和电话
+// 自动填充个人资料中的默认地址和电话，并根据定位自动估算运费
 onMounted(() => {
   if (userStore.userInfo?.address) {
     orderForm.value.delivery_address = userStore.userInfo.address
@@ -276,6 +457,25 @@ onMounted(() => {
   if (userStore.userInfo?.phone) {
     orderForm.value.delivery_phone = userStore.userInfo.phone
   }
+  // 优先用精确定位，没有则用地址文本
+  if (userStore.userInfo?.location_url) {
+    autoEstimateFromLocation()
+  } else if (orderForm.value.delivery_address) {
+    autoEstimateFromAddress(orderForm.value.delivery_address)
+  }
+})
+
+// 地址变更时防抖自动估算
+watch(() => orderForm.value.delivery_address, (newAddr) => {
+  if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer)
+  if (!newAddr || newAddr.trim().length < 5) return
+  estimateDebounceTimer = setTimeout(() => {
+    if (userStore.userInfo?.location_url) {
+      autoEstimateFromLocation()
+    } else {
+      autoEstimateFromAddress(newAddr)
+    }
+  }, 1500)
 })
 
 // 选中商品的总价
@@ -285,18 +485,21 @@ const totalPrice = computed(() => {
     .reduce((sum, item) => sum + item.price_usd * item.quantity, 0)
 })
 
-// 全选/取消全选
-watch(checkAll, (val) => {
-  if (val) {
-    checkedItems.value = cartStore.items.map(item => item.id)
-  } else {
+// 清空购物车
+const clearCart = async () => {
+  const confirmed = await showDialog({
+    title: t('cart.clearCart'),
+    message: t('cart.deleteMessage'),
+    showCancelButton: true,
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+  }).catch(() => false)
+  if (confirmed) {
+    cartStore.clear()
     checkedItems.value = []
+    hapticFeedback('medium')
   }
-})
-
-watch(checkedItems, (val) => {
-  checkAll.value = val.length === cartStore.items.length
-})
+}
 
 // 更新数量
 const updateQuantity = (id, quantity) => {
@@ -367,7 +570,14 @@ const handleSubmit = async () => {
       .map(item => ({
         product_id: item.id,
         quantity: item.quantity,
+        purchase_mode: item.purchase_mode || 'default',
       }))
+
+    if (items.length === 0) {
+      showToast(t('cart.selectItems'))
+      submitting.value = false
+      return
+    }
     
     await createOrder({
       items,
@@ -386,6 +596,12 @@ const handleSubmit = async () => {
     router.push('/m/orders')
   } catch (error) {
     hapticFeedback('error')
+    const msg = error?.message || ''
+    if (msg.includes('Items') && msg.includes('min')) {
+      showToast(t('cart.selectItems'))
+    } else {
+      showToast(msg || t('common.requestFailed'))
+    }
   } finally {
     submitting.value = false
   }
@@ -408,6 +624,17 @@ const handlePrimaryAction = async () => {
   min-height: var(--tg-viewport-height, 100vh);
   background: #f5f5f5;
   padding-bottom: calc(100px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+/* van-submit-bar 默认 bottom:0，会被导航栏遮挡，需偏移导航栏高度 */
+:deep(.van-submit-bar) {
+  bottom: calc(var(--van-tabbar-height, 50px) + env(safe-area-inset-bottom, 0px));
+}
+
+.cart-logo {
+  height: 22px;
+  display: block;
+  margin: 0 auto;
 }
 
 .restriction-panel {
@@ -462,6 +689,16 @@ const handlePrimaryAction = async () => {
 .item-name-kh {
   font-size: 12px;
   color: #8c8c8c;
+  margin-bottom: 4px;
+}
+
+.item-mode-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #1D4ED8;
+  background: #EFF6FF;
+  border-radius: 4px;
+  padding: 1px 6px;
   margin-bottom: 6px;
 }
 
@@ -483,7 +720,28 @@ const handlePrimaryAction = async () => {
   color: #8c8c8c;
 }
 
+.clear-cart-btn {
+  font-size: 13px;
+  color: #ee0a24;
+  padding: 4px 4px;
+  cursor: pointer;
+}
+
 .checkout-disabled-tip {
   margin-bottom: 8px;
+}
+
+/* 紧凑表单布局 */
+:deep(.van-cell-group) {
+  margin-top: 6px !important;
+}
+:deep(.van-cell-group .van-cell) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+:deep(.van-field__label) {
+  width: auto;
+  min-width: 54px;
+  margin-right: 6px;
 }
 </style>

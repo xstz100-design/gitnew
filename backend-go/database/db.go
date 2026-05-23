@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 	"wholesale/models"
+	"wholesale/utils"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -36,8 +37,8 @@ func Connect(dsn string) {
 	if err != nil {
 		log.Fatalf("[DB] 获取底层连接失败: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // SQLite 单写者模式
-	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(5) // WAL 模式支持并发读，多连接可并行处理请求；写冲突由 busy_timeout 处理
+	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetConnMaxLifetime(3600 * time.Second)
 
 	autoMigrate()
@@ -57,6 +58,7 @@ func autoMigrate() {
 		&models.SystemSetting{},
 		&models.DailyMetric{},
 		&models.PhoneVerification{},
+		&models.StockLedger{},
 	)
 	if err != nil {
 		log.Fatalf("[DB] 自动迁移失败: %v", err)
@@ -75,6 +77,10 @@ func autoMigrate() {
 
 	// 确保超级管理员字段已存在（兼容旧数据库）
 	ensureSuperAdmin()
+	// 首次启动若无管理员账号则自动创建
+	seedDefaultAdmin()
+	// 首次启动若无仓库坐标则设置默认（金边中心）
+	seedDefaultWarehouseCoords()
 }
 
 // ensureSuperAdmin 如果存在旧 admin 账号(100001)，设置 is_super_admin=1
@@ -95,4 +101,52 @@ func normalizeDSN(dsn string) string {
 		return strings.TrimPrefix(dsn, "sqlite:///")
 	}
 	return dsn
+}
+
+// seedDefaultAdmin 首次启动时若无任何管理员账号则自动创建 admin/admin123
+func seedDefaultAdmin() {
+	var count int64
+	DB.Model(&models.User{}).Where("role = ?", "admin").Count(&count)
+	if count > 0 {
+		return
+	}
+	hashed, err := utils.HashPassword("admin123")
+	if err != nil {
+		log.Printf("[DB] seedDefaultAdmin: 密码哈希失败: %v", err)
+		return
+	}
+	admin := models.User{
+		Username:       "admin",
+		HashedPassword: hashed,
+		FullName:       "Admin",
+		Role:           "admin",
+		IsActive:       true,
+		IsSuperAdmin:   true,
+	}
+	if err := DB.Create(&admin).Error; err != nil {
+		log.Printf("[DB] seedDefaultAdmin: 创建管理员失败: %v", err)
+		return
+	}
+	log.Println("[DB] 已自动创建默认管理员账号: admin / admin123（请登录后立即修改密码）")
+}
+
+// seedDefaultWarehouseCoords 首次启动时若无仓库坐标则设置默认（金边市中心）
+func seedDefaultWarehouseCoords() {
+	// 直接查询，避免引入 services 包（避免循环导入）
+	var count int64
+	DB.Model(&models.SystemSetting{}).Where("key = ?", "delivery.warehouse_lat").Where("value != ?", "").Count(&count)
+	if count > 0 {
+		return
+	}
+	upsert := func(key, value string) {
+		var s models.SystemSetting
+		if DB.Where("key = ?", key).First(&s).Error == nil {
+			DB.Model(&s).Updates(map[string]interface{}{"value": value, "updated_at": models.NowCambodia()})
+		} else {
+			DB.Create(&models.SystemSetting{Key: key, Value: value, UpdatedAt: models.NowCambodia()})
+		}
+	}
+	upsert("delivery.warehouse_lat", "11.5564")
+	upsert("delivery.warehouse_lng", "104.9282")
+	log.Println("[DB] 已设置默认仓库坐标：金边市中心 (11.5564, 104.9282)，可在管理后台→设置→Google Maps中修改")
 }

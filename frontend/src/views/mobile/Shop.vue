@@ -1,38 +1,43 @@
 <template>
   <div class="mobile-shop">
-    <!-- 第一层：搜索栏 (Sticky) -->
-    <div class="search-header">
-      <div class="search-box">
-        <van-icon name="search" class="search-icon" />
-        <input
-          v-model="searchKeyword"
-          type="text"
-          :placeholder="$t('product.searchPlaceholder')"
-          class="search-input"
-          @input="onSearch"
-        />
-        <van-icon
-          v-if="searchKeyword"
-          name="clear"
-          class="clear-icon"
-          @click="searchKeyword = ''; onSearch()"
-        />
+    <!-- 集成式品牌栏 + 搜索 -->
+    <div class="shop-header">
+      <div class="header-top">
+        <img class="brand-logo" src="/images/logo1.svg" alt="logo" />
+        <button class="lang-btn" @click="toggleLang">{{ langLabel }}</button>
       </div>
-      <button class="contact-btn" @click="contactVisible = true">
-        <van-icon name="phone-o" />
-        <span>{{ $t('common.contactUs') }}</span>
-      </button>
+      <div class="header-search">
+        <div class="search-box">
+          <van-icon name="search" class="search-icon" />
+          <input
+            v-model="searchKeyword"
+            type="text"
+            :placeholder="$t('product.searchPlaceholder')"
+            class="search-input"
+            @input="onSearch"
+          />
+          <van-icon
+            v-if="searchKeyword"
+            name="clear"
+            class="clear-icon"
+            @click="searchKeyword = ''; onSearch()"
+          />
+        </div>
+        <button class="contact-btn" @click="contactVisible = true">
+          <van-icon name="phone-o" />
+        </button>
+      </div>
     </div>
 
     <!-- 公告栏 -->
-    <div v-if="notices.length > 0" class="notice-bar">
-      <van-icon name="volume-o" class="notice-icon" />
-      <div class="notice-scroll">
-        <div class="notice-track" :style="{ animationDuration: notices.length * 15 + 's' }">
-          <span v-for="(n, i) in notices" :key="i" class="notice-item">{{ currentLang === 'zh' ? n.content_zh : n.content_en }}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
-        </div>
-      </div>
-    </div>
+    <van-notice-bar
+      v-if="notices.length > 0"
+      :text="notices.map(n => currentLang === 'zh' ? n.content_zh : n.content_en).join('          ')"
+      left-icon="volume-o"
+      :speed="50"
+      background="#fffbe6"
+      color="#ad6800"
+    />
 
     <div v-if="!userStore.canOrder" class="browse-guide">
       <div class="guide-copy">
@@ -44,7 +49,7 @@
       </van-button>
     </div>
 
-    <!-- 新品推荐 -->
+    <!-- 新品推荐（上） -->
     <div v-if="newProducts.length > 0" class="new-products-section">
       <div class="np-header">
         <div class="np-title-group">
@@ -53,23 +58,74 @@
         </div>
         <span class="np-more" @click="scrollToProducts">{{ $t('common.viewAll') }} ›</span>
       </div>
-      <div class="np-scroll">
-        <div
-          v-for="product in newProducts"
-          :key="product.id"
-          class="np-card"
-          @click="showDetail(product)"
-        >
-          <div class="np-img">
-            <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
-            <div v-else class="np-img-placeholder">
-              <van-icon name="photo-o" size="20" color="#ccc" />
+      <div class="marquee-wrap">
+        <div class="marquee-track" :style="{ animationDuration: newProductsDuration }">
+          <div class="marquee-group">
+            <div v-for="product in newProducts" :key="'na-' + product.id" class="np-card" @click="showDetail(product)">
+              <div class="np-img">
+                <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
+                <div v-else class="np-img-placeholder"><van-icon name="photo-o" size="16" color="#ccc" /></div>
+                <span class="np-badge">NEW</span>
+              </div>
+              <div class="np-info">
+                <div class="np-name">{{ product.name }}</div>
+                <div class="np-price">${{ product.price_usd }}</div>
+              </div>
             </div>
-            <span class="np-badge">NEW</span>
           </div>
-          <div class="np-info">
-            <div class="np-name">{{ product.name }}</div>
-            <div class="np-price">${{ product.price_usd }}</div>
+          <!-- 第二份用于无缝循环，仅在2个以上商品时才需要 -->
+          <div v-if="newProducts.length > 1" class="marquee-group">
+            <div v-for="product in newProducts" :key="'nb-' + product.id" class="np-card" @click="showDetail(product)">
+              <div class="np-img">
+                <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
+                <div v-else class="np-img-placeholder"><van-icon name="photo-o" size="16" color="#ccc" /></div>
+                <span class="np-badge">NEW</span>
+              </div>
+              <div class="np-info">
+                <div class="np-name">{{ product.name }}</div>
+                <div class="np-price">${{ product.price_usd }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 限时折扣（下） -->
+    <div v-if="discountProducts.length > 0" class="discount-section">
+      <div class="np-header">
+        <div class="np-title-group">
+          <span class="np-icon">🏷️</span>
+          <span class="np-title">{{ $t('product.discountProducts') }}</span>
+        </div>
+      </div>
+      <div class="marquee-wrap">
+        <div class="marquee-track" :style="{ animationDuration: discountProductsDuration }">
+          <div class="marquee-group">
+            <div v-for="product in discountProducts" :key="'da-' + product.id" class="np-card" @click="showDetail(product)">
+              <div class="np-img">
+                <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
+                <div v-else class="np-img-placeholder"><van-icon name="photo-o" size="16" color="#ccc" /></div>
+                <span class="np-badge dc-badge">{{ $t('product.discountBadge') }}</span>
+              </div>
+              <div class="np-info">
+                <div class="np-name">{{ product.name }}</div>
+                <div class="np-price">${{ product.price_usd }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-if="discountProducts.length > 1" class="marquee-group">
+            <div v-for="product in discountProducts" :key="'db-' + product.id" class="np-card" @click="showDetail(product)">
+              <div class="np-img">
+                <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
+                <div v-else class="np-img-placeholder"><van-icon name="photo-o" size="16" color="#ccc" /></div>
+                <span class="np-badge dc-badge">{{ $t('product.discountBadge') }}</span>
+              </div>
+              <div class="np-info">
+                <div class="np-name">{{ product.name }}</div>
+                <div class="np-price">${{ product.price_usd }}</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -133,19 +189,22 @@
           <!-- 名称 -->
           <div class="card-name">{{ product.name }}</div>
 
-          <!-- 进货价 -->
+          <!-- 主价格 -->
           <div class="card-price">
             <span class="price-val">${{ product.price_usd }}</span>
             <span class="price-unit">/{{ product.unit }}</span>
           </div>
 
-          <!-- 建议零售价 -->
-          <div v-if="product.retail_price_usd" class="card-retail">
-            <span class="retail-label">{{ $t('product.retailPrice') }}:</span>
-            <span class="retail-val">${{ product.retail_price_usd }}</span>
+          <!-- 单包 / 大包装 价格提示 -->
+          <div v-if="product.price_per_piece_usd || product.price_per_package_usd" class="card-tiers">
+            <span v-if="product.price_per_piece_usd" class="tier-item">
+              {{ $t('product.pricePerPiece') }}: ${{ Number(product.price_per_piece_usd).toFixed(2) }}<em v-if="product.unit_name">/{{ product.unit_name }}</em>
+            </span>
+            <span v-if="product.price_per_package_usd" class="tier-item tier-bulk">
+              {{ $t('product.pricePerPackage') }}: ${{ Number(product.price_per_package_usd).toFixed(2) }}<em v-if="product.pack_name">/{{ product.pack_name }}</em>
+            </span>
           </div>
 
-          <!-- 加购按钮 -->
           <div class="card-action" @click.stop>
             <button
               v-if="!userStore.canOrder"
@@ -201,11 +260,12 @@
     <van-popup
       v-model:show="detailVisible"
       position="bottom"
-      :style="{ height: '85%' }"
+      teleport="body"
+      :style="{ height: popupHeight, transform: popupTranslate, transition: 'transform 0.2s ease, height 0.2s ease' }"
       round
       closeable
     >
-      <div v-if="currentProduct" class="detail-sheet">
+      <div v-if="currentProduct" class="detail-sheet" @focusin="handleDetailFocusin">
         <!-- 图片轮播 -->
         <van-swipe class="detail-swipe" :autoplay="0" indicator-color="#1D4ED8">
           <van-swipe-item v-for="(img, idx) in getProductImages(currentProduct)" :key="idx">
@@ -222,22 +282,87 @@
           <h3 class="detail-name">{{ currentProduct.name }}</h3>
           <p v-if="currentProduct.name_kh" class="detail-kh">{{ currentProduct.name_kh }}</p>
 
-          <div class="detail-price-row">
-            <span class="detail-price">${{ currentProduct.price_usd }}</span>
-            <span class="detail-khr">≈ {{ formatKHR(usdToKhr(currentProduct.price_usd)) }}</span>
-          </div>
-
-          <!-- 建议零售价 -->
-          <div v-if="currentProduct.retail_price_usd" class="detail-retail-row">
-            <span class="retail-tag">{{ $t('product.retailPrice') }}</span>
-            <span class="retail-price">${{ currentProduct.retail_price_usd }}</span>
-            <span class="retail-khr">≈ {{ formatKHR(usdToKhr(currentProduct.retail_price_usd)) }}</span>
+          <!-- 购买规格表（参考电商下单界面：规格/单价/数量三列） -->
+          <div class="purchase-table">
+            <div class="pt-header">
+              <span class="pt-col-spec">{{ $t('product.tableSpec') || '规格' }}</span>
+              <span class="pt-col-price">{{ $t('product.tableUnitPrice') }}</span>
+              <span class="pt-col-qty">{{ $t('product.tableQty') }}</span>
+            </div>
+            <!-- 默认单件 -->
+            <div class="pt-row">
+              <span class="pt-spec">{{ currentProduct.unit_name || currentProduct.unit || $t('product.unitFallback') }}</span>
+              <span class="pt-price">${{ Number(currentProduct.price_usd).toFixed(2) }}<em>/{{ currentProduct.unit || $t('product.unitFallback') }}</em></span>
+              <div class="pt-stepper" @click.stop>
+                <van-stepper
+                  v-model="detailQtyDefault"
+                  :min="0"
+                  :max="currentProduct.stock"
+                  integer
+                  button-size="26px"
+                  input-width="48px"
+                />
+              </div>
+            </div>
+            <!-- 箱装（有件数/箱就显示） -->
+            <div v-if="currentProduct.pieces_per_package" class="pt-row">
+              <span class="pt-spec">
+                {{ currentProduct.pack_name || $t('product.caseFallback') }}
+                <span class="pt-spec-hint">({{ currentProduct.pieces_per_package }}{{ currentProduct.unit || $t('product.unitFallback') }}/{{ currentProduct.pack_name || $t('product.caseFallback') }})</span>
+              </span>
+              <span class="pt-price">
+                <span v-if="currentProduct.price_per_package_usd" class="pt-price-original">${{ Number(Number(currentProduct.price_usd) * Number(currentProduct.pieces_per_package)).toFixed(2) }}</span>
+                ${{ currentProduct.price_per_package_usd ? Number(currentProduct.price_per_package_usd).toFixed(2) : Number(Number(currentProduct.price_usd) * Number(currentProduct.pieces_per_package)).toFixed(2) }}<em>/{{ currentProduct.pack_name || $t('product.caseFallback') }}</em>
+              </span>
+              <div class="pt-stepper" @click.stop>
+                <van-stepper
+                  v-model="detailQtyPackage"
+                  :min="0"
+                  integer
+                  button-size="26px"
+                  input-width="48px"
+                />
+              </div>
+            </div>
+            <!-- 外箱（有整箱售价才显示） -->
+            <div v-if="currentProduct.price_per_case_usd" class="pt-row">
+              <span class="pt-spec">
+                {{ $t('product.caseRow') }}
+                <span v-if="currentProduct.unit_per_case" class="pt-spec-hint">({{ currentProduct.unit_per_case }}{{ currentProduct.unit || $t('product.unitFallback') }}/{{ $t('product.caseFallback') }})</span>
+              </span>
+              <span class="pt-price">
+                ${{ Number(currentProduct.price_per_case_usd).toFixed(2) }}<em>/{{ $t('product.caseFallback') }}</em>
+              </span>
+              <div class="pt-stepper" @click.stop>
+                <van-stepper
+                  v-model="detailQtyCase"
+                  :min="0"
+                  integer
+                  button-size="26px"
+                  input-width="48px"
+                />
+              </div>
+            </div>
           </div>
 
           <div class="detail-meta">
             <span v-if="currentProduct.specs" class="meta-item">{{ $t('product.specs') }}：{{ currentProduct.specs }}</span>
             <span>{{ $t('product.stock') }}：{{ currentProduct.stock }} {{ currentProduct.unit }}</span>
             <span>{{ $t('product.category') }}：{{ currentProduct.category || $t('product.uncategorized') }}</span>
+            <span v-if="currentProduct.brand" class="meta-item">{{ $t('product.brand') }}：{{ currentProduct.brand }}</span>
+            <span v-if="currentProduct.country_of_origin" class="meta-item">{{ $t('product.countryOfOrigin') }}：{{ currentProduct.country_of_origin }}</span>
+            <span v-if="currentProduct.packing_format" class="meta-item">{{ $t('product.packingFormat') }}：{{ currentProduct.packing_format }}</span>
+            <span v-if="currentProduct.shelf_life_days" class="meta-item">{{ $t('product.shelfLife') }}：{{ currentProduct.shelf_life_days }} {{ $t('product.daysUnit') }}</span>
+            <span v-if="currentProduct.production_date" class="meta-item">{{ $t('product.productionDate') }}：{{ currentProduct.production_date.substring(0, 10) }}</span>
+            <span
+              v-if="currentProduct.expiry_date"
+              class="meta-item"
+              :class="isNearExpiry(currentProduct.expiry_date) ? 'meta-expiry-warn' : ''"
+              style="width: 100%; flex-basis: 100%;"
+            >
+              {{ $t('product.expiryDate') }}：{{ currentProduct.expiry_date.substring(0, 10) }}
+              <span v-if="isNearExpiry(currentProduct.expiry_date)">⚠️ {{ $t('product.nearExpiry') }}</span>
+            </span>
           </div>
 
           <!-- 商品描述 -->
@@ -250,23 +375,13 @@
           <div v-if="currentProduct.min_order_qty > 1" class="detail-notice">
             {{ $t('product.minOrderQty') }}：{{ currentProduct.min_order_qty }} {{ currentProduct.unit }}
           </div>
+        </div>
 
-          <!-- 数量快速输入 -->
-          <div class="detail-qty">
-            <span class="qty-label">{{ $t('product.buyQty') }}</span>
-            <van-stepper
-              v-model="detailQty"
-              :min="1"
-              :max="currentProduct.stock"
-              integer
-              button-size="32"
-              input-width="56"
-            />
-          </div>
-
+        <!-- 加入购物车操作栏 -->
+        <div class="detail-footer">
           <button
             class="detail-add-btn"
-            :disabled="currentProduct.stock <= 0"
+            :disabled="currentProduct.stock <= 0 || (!detailQtyDefault && !detailQtyPackage)"
             @click="handleDetailPrimaryAction"
           >
             {{ userStore.canOrder ? $t('product.addToCart') : restrictionActionLabel }}
@@ -278,13 +393,14 @@
     <van-popup
       v-model:show="contactVisible"
       position="bottom"
+      teleport="body"
       round
       :style="{ padding: '24px 20px 32px' }"
     >
       <div class="contact-sheet">
         <div class="contact-title">{{ $t('common.contactUs') }}</div>
-        <div v-if="!contactInfo.phone && !contactInfo.telegram && !contactInfo.whatsapp" class="contact-empty">
-          联系方式尚未设置
+        <div v-if="!contactInfo.phone && !contactInfo.telegram && !contactInfo.whatsapp && !contactInfo.wechat" class="contact-empty">
+          {{ $t('common.contactNotSet') }}
         </div>
         <a v-if="contactInfo.phone" :href="'tel:' + contactInfo.phone" class="contact-item">
           <van-icon name="phone-o" size="20" />
@@ -298,6 +414,10 @@
           <van-icon name="send-gift-o" size="20" />
           <span>Telegram: {{ contactInfo.telegram }}</span>
         </a>
+        <div v-if="contactInfo.wechat" class="contact-item" @click="copyWechat">
+          <van-icon name="wechat-o" size="20" />
+          <span>WeChat: {{ contactInfo.wechat }}</span>
+        </div>
       </div>
     </van-popup>
   </div>
@@ -313,7 +433,7 @@ import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
 import { formatKHR, usdToKhr } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
-import { getCurrentLanguage } from '@/i18n'
+import { setLanguage, getCurrentLanguage } from '@/i18n'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -328,9 +448,23 @@ const categories = ref([{ id: 'all', name: t('product.all') }])
 const notices = ref([])
 const currentLang = ref(getCurrentLanguage())
 
+const toggleLang = () => {
+  const order = ['zh', 'en', 'kh']
+  const idx = order.indexOf(currentLang.value)
+  const newLang = order[(idx + 1) % order.length]
+  setLanguage(newLang)
+  currentLang.value = newLang
+  hapticFeedback('light')
+}
+
+const langLabel = computed(() => {
+  const next = { zh: 'EN', en: 'ខ្មែរ', kh: '中' }
+  return next[currentLang.value] || 'EN'
+})
+
 // 联系我
 const contactVisible = ref(false)
-const contactInfo = ref({ phone: '', telegram: '', whatsapp: '' })
+const contactInfo = ref({ phone: '', telegram: '', whatsapp: '', wechat: '' })
 
 const loadContactInfo = async () => {
   try {
@@ -340,10 +474,56 @@ const loadContactInfo = async () => {
   }
 }
 
+const copyWechat = () => {
+  if (!contactInfo.value.wechat) return
+  navigator.clipboard?.writeText(contactInfo.value.wechat).then(() => {
+    showSuccessToast(t('common.wechatCopied'))
+  }).catch(() => {
+    showToast('WeChat: ' + contactInfo.value.wechat)
+  })
+}
+
+// 键盘感知：用 visualViewport 将弹窗整体上移，始终悬浮在键盘上方
+const popupTranslate = ref('translateY(0px)')
+const popupHeight = ref('85%')
+
+const onViewportResize = () => {
+  if (typeof window === 'undefined') return
+  const vv = window.visualViewport
+  if (!vv) return
+  // 键盘高度 = 窗口高度 - 可视视口高度 - 可视视口偏移
+  const kbHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+  if (kbHeight > 80) {
+    // 键盘弹出：弹窗上移刚好露出键盘，同时缩短高度适应可视区域
+    popupTranslate.value = `translateY(-${kbHeight}px)`
+    popupHeight.value = Math.round(vv.height * 0.92) + 'px'
+  } else {
+    popupTranslate.value = 'translateY(0px)'
+    popupHeight.value = '85%'
+  }
+}
+
+if (typeof window !== 'undefined' && window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onViewportResize)
+  window.visualViewport.addEventListener('scroll', onViewportResize)
+}
+
+const handleDetailFocusin = (e) => {
+  if (e.target?.tagName === 'INPUT') {
+    // 选中全部内容，方便直接覆盖输入
+    setTimeout(() => {
+      e.target.select?.()
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 300)
+  }
+}
+
 // 详情弹窗
 const detailVisible = ref(false)
 const currentProduct = ref(null)
-const detailQty = ref(1)
+const detailQtyDefault = ref(0)
+const detailQtyPackage = ref(0)
+const detailQtyCase = ref(0)
 
 const restrictionTitle = computed(() => {
   switch (userStore.orderAccessState) {
@@ -445,6 +625,19 @@ const newProducts = computed(() => {
     .slice(0, 10)
 })
 
+// 折扣专区 — 管理员勾选 is_discounted 的商品
+const discountProducts = computed(() => {
+  if (!products.value.length) return []
+  return products.value.filter(p => p.is_discounted).slice(0, 20)
+})
+
+// 跑马灯速度统一：每件商品约 83px（75px卡片+8px间距），目标速度 40px/s
+const MARQUEE_SPEED = 40
+const CARD_PX = 83
+const marqueeDuration = (count) => count <= 1 ? '0s' : `${Math.max(6, Math.round(count * CARD_PX / MARQUEE_SPEED))}s`
+const newProductsDuration = computed(() => marqueeDuration(newProducts.value.length))
+const discountProductsDuration = computed(() => marqueeDuration(discountProducts.value.length))
+
 // 滚动到商品区域
 const scrollToProducts = () => {
   const el = document.querySelector('.product-area')
@@ -518,12 +711,26 @@ const switchCategory = (id) => {
   hapticFeedback('light')
 }
 
-const onSearch = () => {}
+const onSearch = () => {
+  // 搜索时重置分类到全部，确保搜索结果不受分类过滤影响
+  if (searchKeyword.value.trim()) {
+    activeCat.value = 'all'
+  }
+}
+
+// 判断是否临近过期（30天内）
+const isNearExpiry = (expiryDateStr) => {
+  if (!expiryDateStr) return false
+  const diff = new Date(expiryDateStr).getTime() - Date.now()
+  return diff > 0 && diff < 30 * 24 * 60 * 60 * 1000
+}
 
 // 商品详情
 const showDetail = (product) => {
   currentProduct.value = product
-  detailQty.value = 1
+  detailQtyDefault.value = 0
+  detailQtyPackage.value = 0
+  detailQtyCase.value = 0
   detailVisible.value = true
   hapticFeedback('medium')
 }
@@ -543,11 +750,25 @@ const addFromDetail = () => {
     goToRestrictionAction()
     return
   }
-  const success = cartStore.addItem(currentProduct.value, detailQty.value)
-  if (success) {
+  let added = false
+  if (detailQtyDefault.value > 0) {
+    cartStore.addItem(currentProduct.value, detailQtyDefault.value, 'default')
+    added = true
+  }
+  if (detailQtyPackage.value > 0 && currentProduct.value.pieces_per_package) {
+    cartStore.addItem(currentProduct.value, detailQtyPackage.value, 'package')
+    added = true
+  }
+  if (detailQtyCase.value > 0 && currentProduct.value.price_per_case_usd) {
+    cartStore.addItem(currentProduct.value, detailQtyCase.value, 'case')
+    added = true
+  }
+  if (added) {
     hapticFeedback('success')
     showSuccessToast(t('product.addedToCart'))
     detailVisible.value = false
+  } else {
+    showToast(t('product.selectQtyFirst'))
   }
 }
 
@@ -598,14 +819,46 @@ onMounted(async () => {
   overflow: visible;
 }
 
-/* ---------- 搜索栏 ---------- */
-.search-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: #fff;
-  padding: 8px 12px;
-  border-bottom: 1px solid #F0F0F0;
+/* ---------- 集成式品牌栏 + 搜索 ---------- */
+.shop-header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand-logo {
+  height: 32px;
+  object-fit: contain;
+}
+
+.lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.lang-btn:active {
+  background: rgba(255,255,255,0.25);
+}
+
+.header-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -615,8 +868,8 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   align-items: center;
-  background: #f5f5f5;
-  border-radius: 4px;
+  background: rgba(255,255,255,0.92);
+  border-radius: 6px;
   padding: 0 10px;
   height: 36px;
 }
@@ -624,18 +877,20 @@ onMounted(async () => {
 .contact-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 0 10px;
+  width: 36px;
   height: 36px;
-  border: 1.5px solid #d44e4e;
+  border: 1.5px solid rgba(255,255,255,0.4);
   border-radius: 6px;
-  background: #fff;
-  color: #d44e4e;
-  font-size: 13px;
-  font-weight: 600;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 16px;
   cursor: pointer;
-  white-space: nowrap;
+  transition: background 0.2s;
+}
+.contact-btn:active {
+  background: rgba(255,255,255,0.3);
 }
 
 .contact-sheet {
@@ -723,8 +978,7 @@ onMounted(async () => {
 .notice-track {
   display: inline-block;
   white-space: nowrap;
-  animation: noticeScroll linear 1;
-  animation-fill-mode: forwards;
+  animation: noticeScroll linear infinite;
 }
 
 .notice-item {
@@ -770,67 +1024,92 @@ onMounted(async () => {
   100% { transform: translateX(-100%); }
 }
 
-/* ---------- 新品推荐 ---------- */
+/* ---------- 折扣专区 + 新品推荐（跑马灯版）---------- */
+.discount-section,
 .new-products-section {
   background: #fff;
   margin: 0;
   border-bottom: 1px solid #f0f0f0;
+  padding: 8px 0 4px;
 }
 
 .np-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 6px;
+  padding: 0 12px 6px;
 }
 
 .np-title-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .np-icon {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .np-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: #1a1a1a;
+  letter-spacing: 0.3px;
 }
 
 .np-more {
-  font-size: 12px;
-  color: #999;
+  font-size: 11px;
+  color: #bbb;
 }
 
-.np-scroll {
+/* 跑马灯容器 */
+.marquee-wrap {
+  overflow: hidden;
+  padding: 0 0 8px 12px;
+  /* 右侧渐隐，保持视觉整洁 */
+  -webkit-mask-image: linear-gradient(to right, #000 80%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 80%, transparent 100%);
+}
+
+@keyframes marqueeLeft {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-track {
   display: flex;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding: 0 12px 12px;
+  width: max-content;
+  gap: 0;
+  animation-name: marqueeLeft;
+  animation-duration: 22s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.marquee-group {
+  display: flex;
   gap: 8px;
 }
 
-.np-scroll::-webkit-scrollbar {
-  display: none;
-}
 
 .np-card {
   flex-shrink: 0;
-  width: 100px;
-  background: #fafafa;
-  border-radius: 6px;
+  width: 75px;
+  background: #fff;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid #f0f0f0;
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
 }
 
 .np-img {
   position: relative;
   width: 100%;
-  height: 100px;
+  height: 60px;
   background: #f5f5f5;
   overflow: hidden;
 }
@@ -851,23 +1130,27 @@ onMounted(async () => {
 
 .np-badge {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 3px;
+  left: 3px;
   background: linear-gradient(135deg, #ff4d4f, #ff7a45);
   color: #fff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
   letter-spacing: 0.5px;
 }
 
+.dc-badge {
+  background: linear-gradient(135deg, #f5a623, #e8222e);
+}
+
 .np-info {
-  padding: 6px 6px 8px;
+  padding: 4px 5px 5px;
 }
 
 .np-name {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   color: #333;
   overflow: hidden;
@@ -876,16 +1159,16 @@ onMounted(async () => {
 }
 
 .np-price {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
   color: #e8222e;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 /* ---------- 品类导航 ---------- */
 .category-tabs {
   position: sticky;
-  top: 52px;
+  top: 0;
   z-index: 99;
   background: #fff;
   border-bottom: 1px solid #F0F0F0;
@@ -932,14 +1215,14 @@ onMounted(async () => {
 
 /* ---------- 商品区域 ---------- */
 .product-area {
-  padding: 8px;
+  padding: 6px;
 }
 
 /* ---------- 商品网格 ---------- */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .product-card {
@@ -1015,8 +1298,8 @@ onMounted(async () => {
 }
 
 .card-name {
-  padding: 8px 8px 2px;
-  font-size: 14px;
+  padding: 6px 6px 1px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
   overflow: hidden;
@@ -1025,11 +1308,11 @@ onMounted(async () => {
 }
 
 .card-price {
-  padding: 0 8px 0;
+  padding: 0 6px 0;
 }
 
 .price-val {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--price-color, #d44e4e);
 }
@@ -1039,23 +1322,31 @@ onMounted(async () => {
   color: #999;
 }
 
-.card-retail {
-  padding: 0 8px 4px;
-  font-size: 11px;
-  color: #999;
+.card-tiers {
+  padding: 1px 6px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.retail-label {
+.tier-item {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.tier-item em {
+  font-style: normal;
   color: #bbb;
 }
 
-.retail-val {
-  color: #e6a23c;
-  font-weight: 500;
+.tier-bulk {
+  color: #1D4ED8;
+  opacity: 0.85;
 }
 
 .card-action {
-  padding: 4px 8px 8px;
+  padding: 3px 6px 6px;
 }
 
 .add-btn {
@@ -1136,7 +1427,7 @@ onMounted(async () => {
 /* ---------- 底部结算栏 ---------- */
 .checkout-bar {
   position: fixed;
-  bottom: 50px;
+  bottom: calc(50px + env(safe-area-inset-bottom, 0px));
   left: 0;
   right: 0;
   z-index: 100;
@@ -1145,7 +1436,6 @@ onMounted(async () => {
   background: #fff;
   border-top: 1px solid #F0F0F0;
   padding: 8px 12px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
 }
 
 .cart-info {
@@ -1208,7 +1498,7 @@ onMounted(async () => {
 .skeleton-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .skeleton-card {
@@ -1279,6 +1569,7 @@ onMounted(async () => {
 .detail-body {
   flex: 1;
   padding: 16px;
+  padding-bottom: 0;
   overflow-y: auto;
 }
 
@@ -1295,6 +1586,117 @@ onMounted(async () => {
   margin: 0 0 12px;
 }
 
+/* ===== 购买规格表 ===== */
+.purchase-table {
+  margin: 12px 0;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.pt-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  background: #f8fafc;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 500;
+}
+
+.pt-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid #eef0f3;
+  transition: background 0.15s;
+}
+
+.pt-row:active {
+  background: #f5f8ff;
+}
+
+.pt-spec {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+
+.pt-spec-hint {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  font-weight: 400;
+  margin-top: 1px;
+}
+
+.pt-price-original {
+  font-size: 11px;
+  color: #bbb;
+  text-decoration: line-through;
+  margin-right: 3px;
+}
+
+.pt-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: #d44e4e;
+}
+
+.pt-price em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 400;
+  color: #999;
+}
+
+.pt-col-spec { }
+.pt-col-price { }
+.pt-col-qty { text-align: right; }
+
+.pt-stepper {
+  display: flex;
+  justify-content: flex-end;
+}
+
+:deep(.purchase-table .van-stepper__input) {
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1.5px solid #ddd;
+  border-radius: 8px;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mode-btn.active {
+  border-color: var(--primary-color, #1D4ED8);
+  background: #EFF6FF;
+  color: var(--primary-color, #1D4ED8);
+  font-weight: 600;
+}
+
+.mode-hint {
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.8;
+}
+
 .detail-price-row {
   display: flex;
   align-items: baseline;
@@ -1306,6 +1708,11 @@ onMounted(async () => {
   font-size: 24px;
   font-weight: 700;
   color: var(--price-color, #d44e4e);
+}
+
+.detail-unit {
+  font-size: 13px;
+  color: #888;
 }
 
 .detail-khr {
@@ -1343,12 +1750,19 @@ onMounted(async () => {
 
 .detail-meta {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  font-size: 12.5px;
   color: #666;
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid #f0f0f0;
+  line-height: 1.7;
+}
+
+.detail-meta .meta-expiry-warn {
+  color: #d97706;
+  font-weight: 600;
 }
 
 .detail-desc {
@@ -1380,11 +1794,11 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
-.detail-qty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+.detail-footer {
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+  flex-shrink: 0;
 }
 
 .qty-label {

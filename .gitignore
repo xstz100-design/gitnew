@@ -63,5 +63,8 @@ backend-go/wholesale.exe
 *.tar.gz
 *.zip
 
+# ===== 部署配置（含服务器密码，禁止提交） =====
+.deploy_config
+
 # ===== 临时脚本 =====
 check_api.py

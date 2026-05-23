@@ -21,8 +21,13 @@ export const useCartStore = defineStore(
       if (purchaseMode === 'piece' && product.price_per_piece_usd) {
         return Number(product.price_per_piece_usd)
       }
-      if (purchaseMode === 'package' && product.price_per_package_usd) {
-        return Number(product.price_per_package_usd)
+      if (purchaseMode === 'package') {
+        if (product.price_per_package_usd) return Number(product.price_per_package_usd)
+        if (product.pieces_per_package) return Number(product.price_usd) * Number(product.pieces_per_package)
+      }
+      if (purchaseMode === 'case') {
+        if (product.price_per_case_usd) return Number(product.price_per_case_usd)
+        if (product.unit_per_case) return Number(product.price_usd) * Number(product.unit_per_case)
       }
       return Number(product.price_usd)
     }
@@ -49,7 +54,13 @@ export const useCartStore = defineStore(
           unit: product.unit,
           price_usd: unitPrice,
           purchase_mode: purchaseMode,
-          display_unit: purchaseMode === 'piece' ? '件' : purchaseMode === 'package' ? '包' : product.unit,
+          display_unit: purchaseMode === 'piece'
+            ? (product.unit_name || '件')
+            : purchaseMode === 'package'
+              ? (product.pack_name || '箱')
+              : purchaseMode === 'case'
+                ? '外箱'
+                : product.unit,
           stock: product.stock,
           image_url: product.image_url,
           quantity,

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"E:\\\\Program_ayang\\\\vue\" | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}})",
+      "Bash(Get-ChildItem -Path \"E:\\\\Program_ayang\\\\vue\\\\frontend\\\\src\\\\views\\\\mobile\\\\\" -Recurse | Select-Object FullName)",
+      "Bash(find \"e:\\\\\\\\Program_ayang\\\\\\\\vue\" -maxdepth 2 -type f -name \"*.xlsx\" -o -name \"*.csv\" -o -name \"*.json\")"
+    ]
+  }
+}

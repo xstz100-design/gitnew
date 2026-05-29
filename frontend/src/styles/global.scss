@@ -138,14 +138,14 @@ body {
   }
 }
 
-// 内容卡片（白底 + 柔和投影，去掉硬边框营造悬浮感）
+// 内容卡片（白底 + 细边框 + 柔和投影）
 .content-card {
   background-color: $bg-content;
-  border: 1px solid transparent;
-  border-radius: $radius-base;
+  border: 1px solid #eaecef;
+  border-radius: 10px;
   padding: $spacing-lg;
   margin-bottom: $spacing-lg;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
 
   &:last-child {
     margin-bottom: 0;
@@ -155,18 +155,18 @@ body {
 // 统计卡片（数据看板）
 .stat-card {
   background-color: $bg-content;
-  border: 1px solid transparent;
-  border-radius: $radius-base;
+  border: 1px solid #eaecef;
+  border-radius: 10px;
   padding: $spacing-base $spacing-lg;
   display: flex;
   align-items: center;
   gap: $spacing-base;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   transition: box-shadow $duration-base $ease-out, transform $duration-base $ease-out;
 
   &:hover {
-    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.04);
-    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.10);
+    transform: translateY(-2px);
   }
 
   .stat-icon {
@@ -655,7 +655,95 @@ body {
   }
 }
 
-// 九、打印优化
+// 九、Admin 后台共享组件样式
+// --------------------------------------------------
+
+// 独立 table-header（用于 content-card 内部标题行）
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0f0f0;
+
+  .table-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  .table-subtitle {
+    font-size: 12px;
+    color: #9ca3af;
+    margin-left: 8px;
+  }
+
+  .link-btn {
+    font-size: 13px;
+    color: #1d4ed8;
+    cursor: pointer;
+    &:hover { text-decoration: underline; }
+  }
+}
+
+// 过滤器行
+.filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+// 搜索+过滤组合栏
+.search-filter-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+// 原生 select 统一样式
+.filter-select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #dde1e7;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239ca3af' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+
+  &:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+  }
+}
+
+// 页头按钮组
+.header-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+// 通用卡片列表
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+// 十、打印优化
 // --------------------------------------------------
 @media print {
   .page-container {

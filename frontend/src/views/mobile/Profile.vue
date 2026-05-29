@@ -33,7 +33,7 @@
         <div class="user-phone">{{ userStore.userInfo?.phone || '' }}</div>
       </div>
     </div>
-    
+
     <!-- 我的地址 -->
     <van-cell-group inset style="margin-top:16px">
       <van-cell
@@ -178,18 +178,6 @@
       </div>
     </van-cell-group>
 
-    <!-- 推送通知设置 -->
-    <van-cell-group v-if="userStore.userInfo?.telegram_id" inset :title="$t('profile.notificationSettings')">
-      <van-cell :title="$t('profile.notifyEnabled')" icon="bullhorn-o">
-        <template #right-icon>
-          <van-switch v-model="notifyEnabled" size="20" @change="toggleNotify" />
-        </template>
-      </van-cell>
-      <div class="telegram-hint">
-        <span>{{ $t('profile.notifyTip') }}</span>
-      </div>
-    </van-cell-group>
-    
     <van-cell-group inset :title="$t('profile.helpSupport')">
       <van-cell
         :title="$t('profile.contactService')"
@@ -361,7 +349,6 @@ const mapContainerRef = ref(null)
 const contactInfo = ref([])
 const submittingProfile = ref(false)
 const checkingStatus = ref(false)
-const notifyEnabled = ref(userStore.userInfo?.notify_enabled !== false)
 const telegramMiniAppAvailable = ref(isTelegramMiniApp())
 const bindingTelegram = ref(false)
 // 编辑个人信息
@@ -600,7 +587,6 @@ const handleVerifyPhone = async (action) => {
   try {
     const updatedUser = await updateProfile({ phone: phoneVerifyForm.phone.trim() })
     userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
-    notifyEnabled.value = updatedUser.notify_enabled !== false
     hapticFeedback('success')
     showSuccessToast(t('profile.phoneVerified'))
     return true
@@ -665,17 +651,6 @@ const bindCurrentTelegram = async () => {
   }
 }
 
-const toggleNotify = async (val) => {
-  try {
-    const updatedUser = await updateProfile({ notify_enabled: val })
-    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
-    hapticFeedback('success')
-    showSuccessToast(t('profile.updateSuccess'))
-  } catch (error) {
-    notifyEnabled.value = !val
-    showToast(t('profile.updateFailed'))
-  }
-}
 
 // 提交资料等待审核
 const submitProfileForReview = async () => {
@@ -902,32 +877,49 @@ onActivated(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 28px 20px;
-  background: var(--primary-color, #2b2b2b);
+  padding: 24px 20px 24px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+.profile-header::before {
+  content: '';
+  position: absolute;
+  top: -60%;
+  right: -20%;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
 }
 
 .avatar {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.15);
+  background: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.08) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
 }
 
 .user-name {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+  letter-spacing: 0.3px;
 }
 
 .user-phone {
   font-size: 13px;
-  opacity: 0.8;
+  opacity: 0.7;
 }
+
 
 .logout-section {
   padding: 24px 16px;

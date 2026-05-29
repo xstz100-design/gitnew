@@ -14,7 +14,7 @@ def run(cmd):
     if err and 'warning' not in err.lower(): print('[err]', err[:300])
     return out
 
-local_binary = r'E:\Program_ayang\vue\wholesale'
+local_binary = r'E:\Program_ayang\vue\backend-go\wholesale_linux'
 remote_tmp = '/opt/wholesale/backend/wholesale_new'
 remote_bin = '/opt/wholesale/backend/wholesale'
 

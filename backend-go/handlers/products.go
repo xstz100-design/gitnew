@@ -1155,6 +1155,51 @@ func ImportProducts(c *gin.Context) {
 }
 
 // GET /api/products/expiring?days=30  — 管理员查询临近过期商品
+// GET /api/products/:id/ledger?days=30 — 商品进销存流水（管理员）
+func GetProductLedger(c *gin.Context) {
+	productID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	days := 30
+	if d := c.Query("days"); d != "" {
+		if v, err := strconv.Atoi(d); err == nil && v > 0 && v <= 365 {
+			days = v
+		}
+	}
+
+	// 商品基本信息
+	var product models.Product
+	if err := database.DB.Where("id = ? AND is_deleted = ?", productID, false).First(&product).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "商品不存在"})
+		return
+	}
+
+	since := time.Now().AddDate(0, 0, -days)
+	var entries []models.StockLedger
+	database.DB.Where("product_id = ? AND created_at >= ?", productID, since).
+		Order("created_at DESC").
+		Limit(200).
+		Find(&entries)
+
+	// 统计入库/出库
+	var totalIn, totalOut int
+	for _, e := range entries {
+		if e.Delta > 0 {
+			totalIn += e.Delta
+		} else {
+			totalOut += -e.Delta
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"product_id":   productID,
+		"product_name": product.Name,
+		"current_stock": product.Stock,
+		"days":         days,
+		"total_in":     totalIn,
+		"total_out":    totalOut,
+		"entries":      entries,
+	})
+}
+
 func ListExpiringProducts(c *gin.Context) {
 	days := 30
 	if d := c.Query("days"); d != "" {

@@ -40,6 +40,7 @@
           <h1 class="pd-name">{{ product.name }}</h1>
           <div class="pd-price-badge">
             ${{ Number(product.price_usd).toFixed(2) }}<span class="pd-price-unit">/{{ product.unit }}</span>
+            <span class="pd-khr">{{ khrLabel(product.price_usd) }}</span>
           </div>
         </div>
         <p v-if="product.name_kh" class="pd-kh">{{ product.name_kh }}</p>
@@ -92,6 +93,7 @@
         <!-- 商品属性 -->
         <div class="pd-meta">
           <span v-if="product.specs">{{ $t('product.specs') }}：{{ product.specs }}</span>
+          <span v-if="product.unit_weight_value">重量：{{ product.unit_weight_value }}{{ product.unit_weight_unit || 'g' }}</span>
           <span>{{ $t('product.stock') }}：{{ product.stock }} {{ product.unit }}</span>
           <span>{{ $t('product.category') }}：{{ product.category || $t('product.uncategorized') }}</span>
           <span v-if="product.brand">{{ $t('product.brand') }}：{{ product.brand }}</span>
@@ -147,6 +149,7 @@ import { showSuccessToast, showToast } from 'vant'
 import { getProduct } from '@/api'
 import { useCartStore } from '@/stores/cart'
 import { hapticFeedback } from '@/utils/device'
+import { khrLabel } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -457,17 +460,22 @@ onMounted(async () => {
 
 .pd-price-badge {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
   font-size: 20px;
   font-weight: 800;
   color: #d44e4e;
   white-space: nowrap;
-  padding: 2px 10px;
+  padding: 4px 10px;
   background: #fff0f0;
   border-radius: 6px;
   border: 1px solid #fdd;
 }
 
 .pd-price-unit { font-size: 13px; font-weight: 400; color: #999; }
+.pd-khr { font-size: 11px; font-weight: 400; color: #bbb; }
 
 .pd-kh { font-size: 13px; color: #999; margin: 0 0 14px; }
 

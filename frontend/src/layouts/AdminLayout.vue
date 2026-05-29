@@ -31,7 +31,7 @@
             <van-icon name="bar-chart-o" /><span>{{ $t('admin.dashboard') }}</span>
           </router-link>
           <router-link to="/admin/products" class="nav-item" active-class="active">
-            <van-icon name="goods-o" /><span>{{ $t('admin.products') }}</span>
+            <van-icon name="bag-o" /><span>{{ $t('admin.products') }}</span>
           </router-link>
           <router-link to="/admin/orders" class="nav-item" active-class="active">
             <van-icon name="orders-o" /><span>{{ $t('admin.orders') }}</span>
@@ -62,7 +62,7 @@
     <!-- 移动端底部 TabBar -->
     <van-tabbar v-if="mobile" route active-color="#1d4ed8">
       <van-tabbar-item to="/admin/dashboard" icon="bar-chart-o">{{ $t('admin.dashboard') }}</van-tabbar-item>
-      <van-tabbar-item to="/admin/products" icon="goods-o">{{ $t('admin.products') }}</van-tabbar-item>
+      <van-tabbar-item to="/admin/products" icon="bag-o">{{ $t('admin.products') }}</van-tabbar-item>
       <van-tabbar-item to="/admin/orders" icon="orders-o">{{ $t('admin.orders') }}</van-tabbar-item>
       <van-tabbar-item to="/admin/merchants" icon="manager-o">{{ $t('admin.merchants') }}</van-tabbar-item>
       <van-tabbar-item icon="more-o" @click.prevent="showMore = true">更多</van-tabbar-item>
@@ -152,8 +152,10 @@ const handleLogout = () => {
 .admin-header {
   background: #fff;
   border-bottom: 1px solid #eef0f3;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   position: relative;
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .admin-header::after {
@@ -161,7 +163,7 @@ const handleLogout = () => {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 2px;
-  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
+  background: linear-gradient(90deg, #1e40af 0%, #2563eb 50%, #0891b2 100%);
 }
 
 .header-content {
@@ -211,10 +213,12 @@ const handleLogout = () => {
 .admin-sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: #f5f7fa;
-  border-right: 1px solid #e4e7ed;
+  background: #fff;
+  border-right: 1px solid #eef0f3;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.04);
   display: flex;
   flex-direction: column;
+  z-index: 5;
 }
 
 .sidebar-title {
@@ -222,17 +226,16 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  color: #1d4ed8;
-  letter-spacing: 2px;
-  border-bottom: 1px solid #e4e7ed;
-  background: #fff;
+  color: #fff;
+  letter-spacing: 1.5px;
   flex-shrink: 0;
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
 }
 
 .admin-nav {
-  padding: 8px 0;
+  padding: 6px 0 12px;
   flex: 1;
   overflow-y: auto;
 }
@@ -240,32 +243,39 @@ const handleLogout = () => {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 20px;
-  font-size: 14px;
+  gap: 9px;
+  padding: 11px 18px;
+  font-size: 13px;
   color: #4a5568;
   text-decoration: none;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, color 0.15s;
   border-left: 3px solid transparent;
+  margin: 1px 6px;
+  border-radius: 6px;
 }
 
 .nav-item:hover {
-  background: #e9f0fd;
+  background: #eff6ff;
   color: #1d4ed8;
+  border-left-color: transparent;
 }
 
 .nav-item.active {
-  background: #e9f0fd;
+  background: #eff6ff;
   color: #1d4ed8;
   border-left-color: #1d4ed8;
   font-weight: 600;
+  border-radius: 0 6px 6px 0;
+  margin-left: 0;
+  padding-left: 15px;
 }
 
 .nav-logout {
-  color: #ef4444;
-  margin-top: 8px;
-  border-top: 1px solid #e4e7ed;
+  color: #6b7280;
+  margin-top: 6px;
+  border-top: 1px solid #f0f0f0;
+  padding-top: 4px;
 }
 
 .nav-logout:hover {
@@ -276,7 +286,7 @@ const handleLogout = () => {
 .admin-main {
   flex: 1;
   overflow: auto;
-  background: #fff;
+  background: #f5f7fa;
 }
 
 /* ===== 移动端 header ===== */
@@ -293,14 +303,15 @@ const handleLogout = () => {
   right: 0;
   z-index: 100;
   border-bottom: 1px solid #eef0f3;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .mobile-header::after {
   content: '';
   position: absolute;
-  left: 0; right: 0; bottom: -2px;
+  left: 0; right: 0; bottom: 0;
   height: 2px;
-  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
+  background: linear-gradient(90deg, #1e40af 0%, #2563eb 50%, #0891b2 100%);
 }
 
 .mobile-header .header-logo { height: 28px; }

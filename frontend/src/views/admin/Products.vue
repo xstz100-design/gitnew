@@ -24,7 +24,7 @@
       <div v-for="row in paginatedProducts" :key="row.id" class="product-card" @click="handleEdit(row)">
         <div class="pc-left">
           <img v-if="row.img1" :src="row.img1" class="pc-img" />
-          <div v-else class="pc-img pc-img-empty"><van-icon name="goods-o" size="24" color="#c0c4cc" /></div>
+          <div v-else class="pc-img pc-img-empty"><van-icon name="bag-o" size="24" color="#c0c4cc" /></div>
         </div>
         <div class="pc-right">
           <div class="pc-title-row">
@@ -52,6 +52,7 @@
           </div>
         </div>
         <div class="pc-actions" @click.stop>
+          <van-button size="small" plain @click="openLedger(row)"><van-icon name="bars" /></van-button>
           <van-button type="danger" size="small" plain @click="handleDelete(row)"><van-icon name="delete-o" /></van-button>
         </div>
       </div>
@@ -355,6 +356,60 @@
       </div>
     </van-popup>
 
+    <!-- 进销存流水弹窗 -->
+    <van-popup v-model:show="ledgerVisible" position="bottom" round :style="{ height: '80vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="ledgerProduct ? ledgerProduct.name + ' — 进销存' : '进销存'"
+        :left-text="$t('common.cancel')"
+        @click-left="ledgerVisible = false"
+      />
+      <div v-if="ledgerData" style="padding: 0 16px 8px;">
+        <!-- 汇总 -->
+        <div class="ledger-summary">
+          <div class="ledger-stat">
+            <div class="ledger-stat-val" style="color:#16a34a">+{{ ledgerData.total_in }}</div>
+            <div class="ledger-stat-label">{{ ledgerDays }}天入库</div>
+          </div>
+          <div class="ledger-stat">
+            <div class="ledger-stat-val" style="color:#dc2626">-{{ ledgerData.total_out }}</div>
+            <div class="ledger-stat-label">{{ ledgerDays }}天出库</div>
+          </div>
+          <div class="ledger-stat">
+            <div class="ledger-stat-val">{{ ledgerData.current_stock }}</div>
+            <div class="ledger-stat-label">当前库存</div>
+          </div>
+        </div>
+        <!-- 天数选择 -->
+        <div class="ledger-days-row">
+          <span
+            v-for="d in [7, 30, 90]" :key="d"
+            class="ledger-day-btn"
+            :class="{ active: ledgerDays === d }"
+            @click="loadLedger(ledgerProduct, d)"
+          >{{ d }}天</span>
+        </div>
+        <!-- 流水列表 -->
+        <van-loading v-if="ledgerLoading" size="24" vertical style="padding:20px 0;text-align:center" />
+        <div v-else class="ledger-list">
+          <div v-for="entry in ledgerData.entries" :key="entry.id" class="ledger-entry">
+            <div class="ledger-entry-left">
+              <span class="ledger-reason" :class="entry.delta > 0 ? 'reason-in' : 'reason-out'">
+                {{ ledgerReasonText(entry.reason) }}
+              </span>
+              <span class="ledger-time">{{ formatLedgerTime(entry.created_at) }}</span>
+            </div>
+            <div class="ledger-entry-right">
+              <span class="ledger-delta" :class="entry.delta > 0 ? 'delta-in' : 'delta-out'">
+                {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}
+              </span>
+              <span class="ledger-after">→ {{ entry.stock_after }}</span>
+            </div>
+          </div>
+          <van-empty v-if="!ledgerData.entries || ledgerData.entries.length === 0" description="暂无记录" />
+        </div>
+      </div>
+    </van-popup>
+
     <!-- 扫码弹窗 -->
     <van-popup v-model:show="scanVisible" position="bottom" round :style="{ height: '65vh' }" @close="stopScan">
       <van-nav-bar
@@ -381,7 +436,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showFailToast, showConfirmDialog } from 'vant'
-import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage, getAllCategories, importProducts, getProductImportTemplateUrl } from '@/api'
+import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage, getAllCategories, importProducts, getProductImportTemplateUrl, getStockLedger } from '@/api'
 import { formatUSD } from '@/utils/format'
 
 const formatDate = (d) => {
@@ -848,6 +903,47 @@ const handleDelete = async (row) => {
   } catch {}
 }
 
+const ledgerVisible = ref(false)
+const ledgerProduct = ref(null)
+const ledgerData = ref(null)
+const ledgerDays = ref(30)
+const ledgerLoading = ref(false)
+
+const openLedger = (product) => {
+  ledgerProduct.value = product
+  ledgerVisible.value = true
+  loadLedger(product, 30)
+}
+
+const loadLedger = async (product, days) => {
+  ledgerDays.value = days
+  ledgerLoading.value = true
+  try {
+    ledgerData.value = await getStockLedger(product.id, days)
+  } catch {
+    ledgerData.value = null
+  } finally {
+    ledgerLoading.value = false
+  }
+}
+
+const ledgerReasonText = (reason) => {
+  const map = {
+    order_create: '下单出库',
+    order_cancel: '取消回补',
+    order_delete: '删单回补',
+    order_complete: '确认扣货',
+    manual_adjust: '手动调整',
+    import: '批量导入',
+  }
+  return map[reason] || reason
+}
+
+const formatLedgerTime = (t) => {
+  if (!t) return ''
+  return new Date(t).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 onMounted(async () => {
   await loadProducts()
   loadCategories()
@@ -862,20 +958,28 @@ onBeforeUnmount(() => stopScan())
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .filter-select {
   height: 34px;
-  padding: 0 8px;
-  border: 1px solid #ebedf0;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 0 10px;
+  padding-right: 28px;
+  border: 1px solid #dde1e7;
+  border-radius: 6px;
+  font-size: 13px;
   background: #fff;
-  color: #323233;
+  color: #374151;
   flex-shrink: 0;
   width: 120px;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239ca3af' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.15s;
 }
+.filter-select:focus { border-color: #2563eb; }
 
 .card-list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -883,13 +987,18 @@ onBeforeUnmount(() => stopScan())
   display: flex;
   gap: 12px;
   background: #fff;
-  border: 1px solid #e4e7ed;
+  border: 1px solid #eaecef;
   border-radius: 10px;
   padding: 12px;
   cursor: pointer;
   align-items: center;
+  transition: box-shadow 0.2s, transform 0.15s;
 }
-.product-card:active { background: #f5f7fa; }
+.product-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+.product-card:active { background: #f8faff; transform: none; }
 
 .pc-left { flex-shrink: 0; }
 .pc-img { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; }
@@ -961,4 +1070,38 @@ onBeforeUnmount(() => stopScan())
 
 .scan-video { width: 100%; max-height: 50vh; background: #000; border-radius: 4px; margin-top: 8px; }
 .scan-error { padding: 12px; color: #f56c6c; background: #fef0f0; border-radius: 4px; margin-bottom: 12px; }
+
+.ledger-summary {
+  display: flex;
+  gap: 0;
+  border: 1px solid #eaecef;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.ledger-stat {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px;
+  border-right: 1px solid #eaecef;
+}
+.ledger-stat:last-child { border-right: none; }
+.ledger-stat-val { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+.ledger-stat-label { font-size: 11px; color: #999; margin-top: 2px; }
+.ledger-days-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.ledger-day-btn { padding: 4px 12px; border-radius: 12px; font-size: 12px; color: #666; background: #f5f5f7; cursor: pointer; }
+.ledger-day-btn.active { background: #1d4ed8; color: #fff; font-weight: 600; }
+.ledger-list { display: flex; flex-direction: column; gap: 1px; max-height: calc(80vh - 260px); overflow-y: auto; }
+.ledger-entry { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+.ledger-entry:last-child { border-bottom: none; }
+.ledger-entry-left { display: flex; flex-direction: column; gap: 2px; }
+.ledger-reason { font-size: 13px; font-weight: 500; }
+.reason-in { color: #16a34a; }
+.reason-out { color: #dc2626; }
+.ledger-time { font-size: 11px; color: #aaa; }
+.ledger-entry-right { display: flex; align-items: center; gap: 8px; }
+.ledger-delta { font-size: 15px; font-weight: 700; }
+.delta-in { color: #16a34a; }
+.delta-out { color: #dc2626; }
+.ledger-after { font-size: 12px; color: #888; }
 </style>

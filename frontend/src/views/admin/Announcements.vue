@@ -7,6 +7,7 @@
     <van-tabs v-model:active="activeTab" @change="loadData" style="margin-bottom: 12px;">
       <van-tab :title="$t('announcement.notice')" name="notice" />
       <van-tab :title="$t('announcement.contact')" name="contact" />
+      <van-tab :title="$t('announcement.banner')" name="banner" />
     </van-tabs>
 
     <div style="margin-bottom: 12px;">
@@ -17,15 +18,30 @@
 
     <div v-else class="card-list">
       <div v-for="row in items" :key="row.id" class="list-card" @click="handleEdit(row)">
-        <div class="card-top">
-          <div class="card-content-preview">{{ row.content_zh || row.content_en }}</div>
-          <van-switch :model-value="row.is_active" size="20" @change="(val) => toggleActive(row, val)" @click.stop />
-        </div>
-        <div v-if="row.content_en && row.content_zh" class="card-content-en">{{ row.content_en }}</div>
-        <div class="card-bottom">
-          <span class="card-sort-badge">{{ $t('product.sortOrder') }}: {{ row.sort_order }}</span>
-          <van-button type="danger" size="mini" plain @click.stop="handleDelete(row)">{{ $t('common.delete') }}</van-button>
-        </div>
+        <!-- Banner 类型：显示图片缩略图 -->
+        <template v-if="activeTab === 'banner'">
+          <div class="card-top">
+            <img v-if="row.content_zh" :src="row.content_zh" class="banner-thumb" />
+            <div v-else class="banner-thumb-empty"><van-icon name="photo-o" size="24" color="#ccc" /></div>
+            <van-switch :model-value="row.is_active" size="20" @change="(val) => toggleActive(row, val)" @click.stop />
+          </div>
+          <div class="card-bottom">
+            <span class="card-sort-badge">{{ $t('product.sortOrder') }}: {{ row.sort_order }}</span>
+            <van-button type="danger" size="mini" plain @click.stop="handleDelete(row)">{{ $t('common.delete') }}</van-button>
+          </div>
+        </template>
+        <!-- 普通文本类型 -->
+        <template v-else>
+          <div class="card-top">
+            <div class="card-content-preview">{{ row.content_zh || row.content_en }}</div>
+            <van-switch :model-value="row.is_active" size="20" @change="(val) => toggleActive(row, val)" @click.stop />
+          </div>
+          <div v-if="row.content_en && row.content_zh" class="card-content-en">{{ row.content_en }}</div>
+          <div class="card-bottom">
+            <span class="card-sort-badge">{{ $t('product.sortOrder') }}: {{ row.sort_order }}</span>
+            <van-button type="danger" size="mini" plain @click.stop="handleDelete(row)">{{ $t('common.delete') }}</van-button>
+          </div>
+        </template>
       </div>
       <van-empty v-if="items.length === 0" :description="$t('common.noData')" />
     </div>
@@ -40,21 +56,39 @@
         @click-right="handleSubmit"
       />
       <van-form ref="formRef" style="padding-top: 8px;">
-        <van-field
-          v-model="form.content_zh"
-          :label="$t('announcement.contentZh')"
-          type="textarea"
-          rows="3"
-          :placeholder="$t('announcement.contentZhPlaceholder')"
-          :rules="[{ required: true, message: t('announcement.contentRequired') }]"
-        />
-        <van-field
-          v-model="form.content_en"
-          :label="$t('announcement.contentEn')"
-          type="textarea"
-          rows="3"
-          :placeholder="$t('announcement.contentEnPlaceholder')"
-        />
+        <!-- Banner 类型：图片上传 -->
+        <template v-if="activeTab === 'banner'">
+          <van-cell :title="$t('announcement.bannerImage')" :required="true">
+            <template #value>
+              <div class="banner-upload-area">
+                <img v-if="form.content_zh" :src="form.content_zh" class="banner-preview" />
+                <van-uploader :after-read="onBannerImageRead" accept="image/*" :max-count="1" :show-upload="!form.content_zh">
+                  <van-button v-if="!form.content_zh" size="small" icon="photograph">{{ $t('announcement.uploadImage') }}</van-button>
+                </van-uploader>
+                <van-button v-if="form.content_zh" size="small" plain type="danger" @click="form.content_zh = ''">{{ $t('common.delete') }}</van-button>
+              </div>
+            </template>
+          </van-cell>
+          <div v-if="uploadingBanner" style="padding: 8px 16px; font-size:13px; color:#1d4ed8;">{{ $t('announcement.uploading') }}</div>
+        </template>
+        <!-- 普通文本类型 -->
+        <template v-else>
+          <van-field
+            v-model="form.content_zh"
+            :label="$t('announcement.contentZh')"
+            type="textarea"
+            rows="3"
+            :placeholder="$t('announcement.contentZhPlaceholder')"
+            :rules="[{ required: true, message: t('announcement.contentRequired') }]"
+          />
+          <van-field
+            v-model="form.content_en"
+            :label="$t('announcement.contentEn')"
+            type="textarea"
+            rows="3"
+            :placeholder="$t('announcement.contentEnPlaceholder')"
+          />
+        </template>
         <van-field v-model.number="form.sort_order" type="number" :label="$t('product.sortOrder')" placeholder="0" />
         <van-cell :title="$t('product.status')">
           <template #right-icon>
@@ -72,8 +106,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { showSuccessToast, showConfirmDialog } from 'vant'
-import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/api'
+import { showSuccessToast, showConfirmDialog, showFailToast } from 'vant'
+import { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, uploadImage } from '@/api'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -85,6 +119,21 @@ const submitting = ref(false)
 const formRef = ref()
 
 const form = reactive({ id: null, content_zh: '', content_en: '', sort_order: 0, is_active: true })
+const uploadingBanner = ref(false)
+
+const onBannerImageRead = async (file) => {
+  uploadingBanner.value = true
+  try {
+    const res = await uploadImage(file.file)
+    const relUrl = res.url || res
+    // 确保存绝对 URL，避免移动端相对路径解析失败
+    form.content_zh = relUrl.startsWith('http') ? relUrl : (window.location.origin + relUrl)
+  } catch {
+    showFailToast(t('product.uploadFailed'))
+  } finally {
+    uploadingBanner.value = false
+  }
+}
 
 const loadData = async () => {
   loading.value = true
@@ -108,7 +157,11 @@ const handleEdit = (row) => {
 }
 
 const handleSubmit = async () => {
-  if (formRef.value) {
+  if (activeTab.value === 'banner' && !form.content_zh) {
+    showFailToast(t('announcement.contentRequired'))
+    return
+  }
+  if (formRef.value && activeTab.value !== 'banner') {
     try { await formRef.value.validate() } catch { return }
   }
   submitting.value = true
@@ -197,4 +250,37 @@ onMounted(() => { loadData() })
 
 .card-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid #f5f5f5; }
 .card-sort-badge { font-size: 12px; color: #999; }
+
+.banner-thumb {
+  width: 120px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  flex-shrink: 0;
+}
+.banner-thumb-empty {
+  width: 120px;
+  height: 60px;
+  border-radius: 6px;
+  border: 1px dashed #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+}
+
+.banner-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.banner-preview {
+  width: 160px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #eee;
+}
 </style>

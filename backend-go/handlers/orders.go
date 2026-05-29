@@ -25,6 +25,7 @@ type OrderItemRequest struct {
 
 type OrderCreateRequest struct {
 	Items           []OrderItemRequest   `json:"items" binding:"required,min=1"`
+	MerchantID      *int64               `json:"merchant_id"`    // 管理员代下单时指定商户
 	PaymentStatus   models.PaymentStatus `json:"payment_status"`
 	DeliveryAddress *string              `json:"delivery_address"`
 	DeliveryPhone   *string              `json:"delivery_phone"`
@@ -275,12 +276,23 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// 管理员可代商户下单：确定实际下单商户
+	targetMerchant := user
+	if user.Role != models.RoleMerchant && req.MerchantID != nil {
+		var m models.User
+		if err := database.DB.First(&m, *req.MerchantID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "商户不存在"})
+			return
+		}
+		targetMerchant = &m
+	}
+
 	// 幂等校验：相同 client_request_id 直接返回已有订单（防止弱网重试重复下单）
 	if req.ClientRequestID != nil && *req.ClientRequestID != "" {
 		var existing models.Order
 		if database.DB.Preload("Merchant").Preload("Items.Product").
 			Where("merchant_id = ? AND client_request_id = ? AND is_deleted = ?",
-				user.ID, *req.ClientRequestID, false).
+				targetMerchant.ID, *req.ClientRequestID, false).
 			First(&existing).Error == nil {
 			merchantName := ""
 			if existing.Merchant != nil {
@@ -291,9 +303,9 @@ func CreateOrder(c *gin.Context) {
 		}
 	}
 
-	// 月结权限
-	if req.PaymentStatus == models.PaymentMonthly && !user.AllowCredit {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "您没有赊账权限，请联系管理员开通"})
+	// 月结权限（按实际商户判断）
+	if req.PaymentStatus == models.PaymentMonthly && !targetMerchant.AllowCredit {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "该商户没有赊账权限"})
 		return
 	}
 
@@ -415,17 +427,17 @@ func CreateOrder(c *gin.Context) {
 		// 配送地址默认用商户资料
 		deliveryAddr := req.DeliveryAddress
 		if deliveryAddr == nil || *deliveryAddr == "" {
-			deliveryAddr = user.Address
+			deliveryAddr = targetMerchant.Address
 		}
 		deliveryPhone := req.DeliveryPhone
 		if deliveryPhone == nil || *deliveryPhone == "" {
-			deliveryPhone = user.Phone
+			deliveryPhone = targetMerchant.Phone
 		}
 
 		now := models.NowCambodia()
 		order = models.Order{
 			OrderNo:         generateOrderNo(),
-			MerchantID:      user.ID,
+			MerchantID:      targetMerchant.ID,
 			TotalUSD:        totalUSD,
 			GoodsTotalUSD:   goodsTotal,
 			DeliveryFeeUSD:  deliveryFee,
@@ -458,9 +470,9 @@ func CreateOrder(c *gin.Context) {
 			}
 		}
 
-		// 月结累加
+		// 月结累加（记在实际商户账上）
 		if req.PaymentStatus == models.PaymentMonthly {
-			tx.Model(user).UpdateColumn("credit_limit", gorm.Expr("credit_limit + ?", totalUSD))
+			tx.Model(targetMerchant).UpdateColumn("credit_limit", gorm.Expr("credit_limit + ?", totalUSD))
 		}
 
 		// 重新加载订单用于返回
@@ -475,32 +487,7 @@ func CreateOrder(c *gin.Context) {
 
 	// 事务提交后：发送通知（非阻塞）
 	go func() {
-		services.NotifyAdminsNewOrder(order.OrderNo, user.FullName, order.TotalUSD, order.ScheduledAt, nil)
-		notifyItems := make([]map[string]interface{}, len(orderItemsData))
-		for i, d := range orderItemsData {
-			imgStr := ""
-			if d.ImageURL != nil {
-				imgStr = *d.ImageURL
-			}
-			nameKH := ""
-			if d.NameKH != nil {
-				nameKH = *d.NameKH
-			}
-			nameEN := ""
-			if d.NameEN != nil {
-				nameEN = *d.NameEN
-			}
-			notifyItems[i] = map[string]interface{}{
-				"name":     d.ProductName,
-				"name_kh":  nameKH,
-				"name_en":  nameEN,
-				"barcode":  d.Barcode,
-				"unit":     d.Unit,
-				"quantity": d.Quantity,
-				"image":    imgStr,
-			}
-		}
-		services.NotifyPickerNewOrder(order.OrderNo, order.ID, order.ScheduledAt, notifyItems)
+		services.NotifyAdminsNewOrder(order.OrderNo, targetMerchant.FullName, order.TotalUSD, order.ScheduledAt, nil)
 		// 库存预警检查
 		for _, d := range orderItemsData {
 			var p models.Product

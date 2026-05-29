@@ -77,6 +77,7 @@
             @click="handleToggleSuperAdmin(row, !row.is_super_admin)"
           >{{ row.is_super_admin ? $t('admin.demoteSuperAdmin') : $t('admin.promoteSuperAdmin') }}</van-button>
           <van-button v-if="canDeleteRow(row)" type="danger" size="small" plain @click="handleDeleteUser(row)">{{ $t('common.delete') }}</van-button>
+          <van-button type="primary" size="small" plain icon="orders-o" @click.stop="openProxyOrder(row)">代下单</van-button>
         </div>
       </div>
       <van-empty v-if="filteredUsers.length === 0" :description="$t('common.noData')" />
@@ -181,6 +182,61 @@
       </div>
     </van-popup>
 
+    <!-- 代下单弹窗 -->
+    <van-popup v-model:show="proxyOrderVisible" position="bottom" round :style="{ height: '90vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="proxyMerchant ? '代 ' + (proxyMerchant.full_name || proxyMerchant.username) + ' 下单' : '代下单'"
+        :left-text="$t('common.cancel')"
+        :right-text="submittingProxy ? '' : $t('cart.submitOrder')"
+        @click-left="proxyOrderVisible = false"
+        @click-right="submitProxyOrder"
+      />
+      <!-- 商品搜索 -->
+      <div style="padding: 8px 12px 0;">
+        <van-search v-model="proxySearch" placeholder="搜索商品" shape="round" style="padding:0" />
+      </div>
+      <!-- 已选商品汇总 -->
+      <div v-if="proxySelectedCount > 0" class="proxy-summary">
+        <span>已选 {{ proxySelectedCount }} 件商品 · 合计 ${{ proxyTotal.toFixed(2) }}</span>
+      </div>
+      <!-- 商品列表 -->
+      <div class="proxy-product-list">
+        <van-loading v-if="proxyLoading" size="24" vertical style="padding:40px 0;text-align:center" />
+        <div v-else>
+          <div v-for="p in filteredProxyProducts" :key="p.id" class="proxy-item">
+            <div class="proxy-item-info">
+              <div class="proxy-item-name">{{ p.name }}</div>
+              <div class="proxy-item-price">
+                <span class="proxy-price-main">${{ p.price_usd }}</span>
+                <span v-if="p.price_per_package_usd" class="proxy-price-case">箱 ${{ Number(p.price_per_package_usd).toFixed(2) }}</span>
+              </div>
+            </div>
+            <div class="proxy-item-ctrl" @click.stop>
+              <div v-if="getProxyQty(p.id) > 0" class="proxy-qty-row">
+                <button class="proxy-qty-btn" @click="setProxyQty(p.id, getProxyQty(p.id) - 1, p)">−</button>
+                <span class="proxy-qty-num">{{ getProxyQty(p.id) }}</span>
+                <button class="proxy-qty-btn" @click="setProxyQty(p.id, getProxyQty(p.id) + 1, p)">+</button>
+              </div>
+              <button v-else class="proxy-add-btn" :disabled="p.stock <= 0" @click="setProxyQty(p.id, 1, p)">
+                {{ p.stock <= 0 ? '售罄' : '+ 加入' }}
+              </button>
+            </div>
+          </div>
+          <van-empty v-if="filteredProxyProducts.length === 0" description="无商品" />
+        </div>
+      </div>
+      <!-- 备注 -->
+      <div style="padding: 0 12px 8px;">
+        <van-field v-model="proxyNote" :label="$t('order.note')" :placeholder="$t('cart.notePlaceholder')" />
+      </div>
+      <!-- 提交 -->
+      <div style="padding: 0 12px 16px;">
+        <van-button block type="primary" :loading="submittingProxy" :disabled="proxySelectedCount === 0" @click="submitProxyOrder">
+          提交订单（共 ${{ proxyTotal.toFixed(2) }}）
+        </van-button>
+      </div>
+    </van-popup>
+
     <!-- 地图选点弹窗 -->
     <van-popup v-model:show="showAdminMapPicker" position="bottom" round :style="{ height: '85vh' }" :close-on-click-overlay="false">
       <van-nav-bar
@@ -208,7 +264,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showFailToast, showConfirmDialog } from 'vant'
-import { getUserList, register, updateUser, deleteUser, setUserSuperAdmin } from '@/api'
+import { getUserList, register, updateUser, deleteUser, setUserSuperAdmin, getProducts, createOrder } from '@/api'
 import { getRoleText } from '@/utils/format'
 import { useUserStore } from '@/stores/user'
 
@@ -320,6 +376,15 @@ const form = reactive({
 const newAccountVisible = ref(false)
 const newAccountNumber = ref('')
 const newAccountPassword = ref('')
+
+const proxyOrderVisible = ref(false)
+const proxyMerchant = ref(null)
+const proxySearch = ref('')
+const proxyLoading = ref(false)
+const proxyProducts = ref([])
+const proxyCart = ref({}) // { productId: { qty, price_usd, purchase_mode } }
+const proxyNote = ref('')
+const submittingProxy = ref(false)
 
 const getRoleType = (role) => {
   const map = { admin: 'danger', merchant: 'success' }
@@ -463,6 +528,80 @@ const handleDeleteUser = async (row) => {
   } catch {}
 }
 
+const filteredProxyProducts = computed(() => {
+  if (!proxySearch.value.trim()) return proxyProducts.value.filter(p => p.is_active !== false)
+  const kw = proxySearch.value.toLowerCase()
+  return proxyProducts.value.filter(p =>
+    p.is_active !== false &&
+    ((p.name && p.name.toLowerCase().includes(kw)) ||
+     (p.name_kh && p.name_kh.toLowerCase().includes(kw)) ||
+     (p.category && p.category.toLowerCase().includes(kw)))
+  )
+})
+
+const proxySelectedCount = computed(() =>
+  Object.values(proxyCart.value).reduce((s, v) => s + v.qty, 0)
+)
+
+const proxyTotal = computed(() =>
+  Object.values(proxyCart.value).reduce((s, v) => s + v.price_usd * v.qty, 0)
+)
+
+const getProxyQty = (id) => proxyCart.value[id]?.qty || 0
+
+const setProxyQty = (id, qty, product) => {
+  if (qty <= 0) {
+    const c = { ...proxyCart.value }
+    delete c[id]
+    proxyCart.value = c
+  } else {
+    proxyCart.value = {
+      ...proxyCart.value,
+      [id]: { qty, price_usd: product.price_usd, purchase_mode: 'default' },
+    }
+  }
+}
+
+const openProxyOrder = async (merchant) => {
+  proxyMerchant.value = merchant
+  proxyCart.value = {}
+  proxyNote.value = ''
+  proxySearch.value = ''
+  proxyOrderVisible.value = true
+  proxyLoading.value = true
+  try {
+    proxyProducts.value = await getProducts({ is_active: true })
+  } catch {
+    proxyProducts.value = []
+  } finally {
+    proxyLoading.value = false
+  }
+}
+
+const submitProxyOrder = async () => {
+  if (submittingProxy.value) return
+  const items = Object.entries(proxyCart.value)
+    .filter(([, v]) => v.qty > 0)
+    .map(([id, v]) => ({ product_id: parseInt(id), quantity: v.qty, purchase_mode: v.purchase_mode }))
+  if (items.length === 0) { showFailToast('请至少选择一件商品'); return }
+  submittingProxy.value = true
+  try {
+    await createOrder({
+      items,
+      merchant_id: proxyMerchant.value.id,
+      note: proxyNote.value || undefined,
+      payment_status: 'cash',
+    })
+    showSuccessToast('代下单成功')
+    proxyOrderVisible.value = false
+    proxyCart.value = {}
+  } catch (e) {
+    showFailToast(e?.message || '下单失败')
+  } finally {
+    submittingProxy.value = false
+  }
+}
+
 onMounted(() => { loadMerchants() })
 </script>
 
@@ -478,12 +617,18 @@ onMounted(() => { loadMerchants() })
 
 .stat-card {
   background: #fff;
+  border: 1px solid #eaecef;
   border-radius: 10px;
   padding: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.stat-card:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.09);
+  transform: translateY(-1px);
 }
 
 .stat-icon {
@@ -500,12 +645,18 @@ onMounted(() => { loadMerchants() })
 
 .user-card {
   background: #fff;
+  border: 1px solid #eaecef;
   border-radius: 10px;
   padding: 12px 14px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
   cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.15s;
 }
-.user-card:active { opacity: 0.85; }
+.user-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.09);
+  transform: translateY(-1px);
+}
+.user-card:active { background: #f8faff; transform: none; }
 
 .ucard-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ucard-meta { flex: 1; min-width: 0; }
@@ -541,4 +692,39 @@ onMounted(() => { loadMerchants() })
 .account-label { color: #909399; font-size: 14px; }
 .account-number { font-size: 24px; font-weight: 700; color: #1D4ED8; letter-spacing: 2px; }
 .account-pwd-tip { color: #909399; font-size: 13px; }
+
+.proxy-summary {
+  background: #fff8f0;
+  border-bottom: 1px solid #f5e0c8;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c76b35;
+}
+.proxy-product-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(90vh - 280px);
+  padding: 0 0 4px;
+}
+.proxy-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.proxy-item-info { flex: 1; min-width: 0; }
+.proxy-item-name { font-size: 14px; font-weight: 500; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-item-price { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.proxy-price-main { font-size: 14px; font-weight: 700; color: #d44e4e; }
+.proxy-price-case { font-size: 11px; color: #1a4ed8; background: #eef4ff; padding: 1px 5px; border-radius: 3px; }
+.proxy-item-ctrl { flex-shrink: 0; }
+.proxy-qty-row { display: flex; align-items: center; gap: 0; }
+.proxy-qty-btn { width: 30px; height: 30px; border: 1px solid #e0e0e0; background: #fff; font-size: 16px; font-weight: 600; color: #333; border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.proxy-qty-btn:active { background: #f0f0f0; }
+.proxy-qty-num { min-width: 32px; text-align: center; font-size: 14px; font-weight: 600; }
+.proxy-add-btn { height: 30px; padding: 0 12px; border: 1px solid #c76b35; background: #fff6f0; color: #c76b35; font-size: 12px; font-weight: 600; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.proxy-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

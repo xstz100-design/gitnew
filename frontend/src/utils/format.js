@@ -34,6 +34,15 @@ export function formatKHR(amount) {
 }
 
 /**
+ * USD 转 KHR 紧凑显示，适合卡片等小空间（≈ 1,200 ៛）
+ */
+export function khrLabel(usd, rate = 4000) {
+  const val = Math.round(Number(usd) * rate)
+  if (isNaN(val) || val === 0) return ''
+  return `≈ ${val.toLocaleString()} ៛`
+}
+
+/**
  * 格式化日期时间
  */
 export function formatDateTime(dateString) {

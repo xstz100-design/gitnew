@@ -463,6 +463,17 @@ export function deleteCategory(id) {
   })
 }
 
+/**
+ * 获取商品进销存流水 - 管理员
+ */
+export function getStockLedger(productId, days = 30) {
+  return request({
+    url: `/api/products/${productId}/ledger`,
+    method: 'get',
+    params: { days },
+  })
+}
+
 // ============= 图片上传 =============
 
 /**

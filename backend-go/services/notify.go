@@ -429,14 +429,42 @@ func HandleBotCallback(db *gorm.DB, update map[string]interface{}) {
 			return
 		}
 		utils.AnswerCallbackQuery(token, callbackID, "✅ 订单完成！收款已确认 / ការបញ្ជាទិញបានបញ្ចប់")
+		// 通知商户本人：订单已送达
+		if order.Merchant != nil && order.Merchant.TelegramChatID != nil {
+			merchantChatID := *order.Merchant.TelegramChatID
+			merchantName := utils.EscapeHTML(order.Merchant.FullName)
+			khrRate := config.C.USDToKHRRate
+			if khrRate <= 0 {
+				khrRate = 4000
+			}
+			merchantMsg := fmt.Sprintf(
+				"✅ <b>订单已送达！</b>\nការបញ្ជាទិញបានបញ្ចប់！\n\n"+
+					"📋 订单号 / លេខបញ្ជា: <b>#%s</b>\n"+
+					"💵 金额 / ចំនួន: <b>$%.2f</b>（≈ %.0f R）\n\n"+
+					"感谢 <b>%s</b> 的惠顾！\nអរគុណ <b>%s</b>！",
+				order.OrderNo,
+				order.TotalUSD, order.TotalUSD*khrRate,
+				merchantName, merchantName,
+			)
+			go utils.SendTelegramMessage(token, merchantChatID, merchantMsg,
+				miniAppMarkup(config.C.SiteURL))
+		}
 
 	default:
 		utils.AnswerCallbackQuery(token, callbackID, "未知操作")
 	}
 }
 
+// miniAppMarkup 生成打开 Miniapp 商城的内联键盘按钮
+func miniAppMarkup(siteURL string) map[string]interface{} {
+	return map[string]interface{}{
+		"inline_keyboard": [][]map[string]interface{}{
+			{{"text": "🛒 打开商城 / ហាងលក់ដុំ", "web_app": map[string]string{"url": siteURL + "/m/shop"}}},
+		},
+	}
+}
+
 // HandlePrivateMessage 处理用户私聊 Bot 的消息
-// 用于：1) 收到 /start 时记录 chat_id；2) Bot 深链登录（自动注册商户）；3) 未绑定时引导关联
 func HandlePrivateMessage(db *gorm.DB, tgID int64, text string, firstName string, lastName string) {
 	token := config.C.TGBotToken
 	if token == "" {
@@ -444,78 +472,251 @@ func HandlePrivateMessage(db *gorm.DB, tgID int64, text string, firstName string
 	}
 	chatIDStr := fmt.Sprintf("%d", tgID)
 	trimmed := strings.TrimSpace(text)
+	siteURL := config.C.SiteURL
+	shopBtn := miniAppMarkup(siteURL)
 
-	// 处理深链登录：/start login_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	// ── 深链登录：/start login_TOKEN ──────────────────────────────
 	if strings.HasPrefix(trimmed, "/start login_") {
-		loginToken := strings.TrimPrefix(trimmed, "/start login_")
-		loginToken = strings.TrimSpace(loginToken)
-		if loginToken != "" {
-			// 查找该 TG ID 对应的账号
-			var user models.User
-			if err := db.Where("telegram_id = ? AND is_active = ?", tgID, true).First(&user).Error; err == nil {
-				// 已有账号：调用 handlers 包的确认函数（通过接口避免循环引用）
-				if BotLoginConfirmFunc != nil && BotLoginConfirmFunc(loginToken, user.ID) {
-					msg := fmt.Sprintf("✅ 您好，<b>%s</b>！\n\n登录验证成功，请返回网页，已自动登录。", user.FullName)
-					go utils.SendTelegramMessage(token, chatIDStr, msg, nil)
-				} else {
-					go utils.SendTelegramMessage(token, chatIDStr, "❌ 登录链接无效或已过期，请重新点击网页上的登录按钮。", nil)
-				}
+		loginToken := strings.TrimSpace(strings.TrimPrefix(trimmed, "/start login_"))
+		if loginToken == "" {
+			return
+		}
+
+		var user models.User
+		if db.Where("telegram_id = ? AND is_active = ?", tgID, true).First(&user).Error == nil {
+			// 已有绑定账号
+			if BotLoginConfirmFunc != nil && BotLoginConfirmFunc(loginToken, user.ID) {
+				msg := fmt.Sprintf(
+					"✅ 您好，<b>%s</b>！登录成功，请返回商城继续使用。\n"+
+						"ចូលជោគជ័យ <b>%s</b>！",
+					utils.EscapeHTML(user.FullName), utils.EscapeHTML(user.FullName),
+				)
+				go utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
 			} else {
-				// 账号不存在——检查是否被禁用
-				var disabledUser models.User
-				if db.Where("telegram_id = ? AND is_active = ?", tgID, false).First(&disabledUser).Error == nil {
-					go utils.SendTelegramMessage(token, chatIDStr, "❌ 您的账号已被禁用，请联系管理员。", nil)
-					return
-				}
-				// 自动注册商户账号
-				username := fmt.Sprintf("tg_%d", tgID)
-				fullName := strings.TrimSpace(firstName + " " + lastName)
-				if fullName == "" {
-					fullName = username
-				}
-				hashed, hashErr := utils.HashPassword(utils.GenerateTemporaryPassword(16))
-				if hashErr != nil {
-					go utils.SendTelegramMessage(token, chatIDStr, "❌ 注册失败，请重试。", nil)
-					return
-				}
-				newUser := models.User{
-					Username:       username,
-					HashedPassword: hashed,
-					FullName:       fullName,
-					Role:           "merchant",
-					IsActive:       true,
-					ApprovalStatus: "approved",
-				}
-				tgIDVal := tgID
-				newUser.TelegramID = &tgIDVal
-				chatIDStrVal := chatIDStr
-				newUser.TelegramChatID = &chatIDStrVal
-				if createErr := db.Create(&newUser).Error; createErr != nil {
-					go utils.SendTelegramMessage(token, chatIDStr, "❌ 注册失败，请重试。", nil)
-					return
-				}
-				// 完成登录
-				if BotLoginConfirmFunc != nil && BotLoginConfirmFunc(loginToken, newUser.ID) {
-					msg := fmt.Sprintf("✅ 欢迎！已为您自动创建账号并完成登录。\n\n用户名：<code>%s</code>\n请返回网页继续使用。", username)
-					go utils.SendTelegramMessage(token, chatIDStr, msg, nil)
-				} else {
-					go utils.SendTelegramMessage(token, chatIDStr, "❌ 登录链接无效或已过期，请重新点击网页上的登录按钮。", nil)
-				}
+				go utils.SendTelegramMessage(token, chatIDStr,
+					"❌ 登录链接无效或已过期，请重新点击网页上的登录按钮。\nតំណអស់សុពលភាព។", nil)
 			}
 			return
 		}
-	}
 
-	// 检查该 TG ID 是否已绑定账号
-	var user models.User
-	if db.Where("telegram_id = ? AND is_active = ?", tgID, true).First(&user).Error == nil {
-		// 已绑定，回复欢迎语（仅 /start 时）
-		if trimmed == "/start" {
-			msg := fmt.Sprintf("👋 您好，<b>%s</b>！\n\n您的账号已绑定 Telegram，可在网页登录页面点击「Telegram 登录」按钮快速登录。", user.FullName)
-			go utils.SendTelegramMessage(token, chatIDStr, msg, nil)
+		// 账号不存在 — 检查是否被禁用
+		var disabledUser models.User
+		if db.Where("telegram_id = ? AND is_active = ?", tgID, false).First(&disabledUser).Error == nil {
+			go utils.SendTelegramMessage(token, chatIDStr, "❌ 您的账号已被禁用，请联系管理员。", nil)
+			return
+		}
+
+		// 自动注册商户账号
+		username := fmt.Sprintf("tg_%d", tgID)
+		fullName := strings.TrimSpace(firstName + " " + lastName)
+		if fullName == "" {
+			fullName = username
+		}
+		hashed, hashErr := utils.HashPassword(utils.GenerateTemporaryPassword(16))
+		if hashErr != nil {
+			go utils.SendTelegramMessage(token, chatIDStr, "❌ 注册失败，请重试。", nil)
+			return
+		}
+		tgIDVal := tgID
+		chatIDStrVal := chatIDStr
+		newUser := models.User{
+			Username:       username,
+			HashedPassword: hashed,
+			FullName:       fullName,
+			Role:           models.RoleMerchant,
+			IsActive:       true,
+			ApprovalStatus: models.ApprovalApproved,
+			TelegramID:     &tgIDVal,
+			TelegramChatID: &chatIDStrVal,
+		}
+		if db.Create(&newUser).Error != nil {
+			go utils.SendTelegramMessage(token, chatIDStr, "❌ 注册失败，请重试。", nil)
+			return
+		}
+		if BotLoginConfirmFunc != nil && BotLoginConfirmFunc(loginToken, newUser.ID) {
+			msg := fmt.Sprintf(
+				"🎉 欢迎加入<b>东方优选</b>！\n"+
+					"ស្វាគមន៍！\n\n"+
+					"已为您自动创建账号，点击下方按钮立即开始批发下单 👇",
+			)
+			go utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+		} else {
+			go utils.SendTelegramMessage(token, chatIDStr,
+				"❌ 登录链接无效或已过期，请重新点击网页上的登录按钮。", nil)
 		}
 		return
 	}
 
-	// 未绑定，不回复
+	// ── 查找已绑定账号 ────────────────────────────────────────────
+	var user models.User
+	bound := db.Where("telegram_id = ? AND is_active = ?", tgID, true).First(&user).Error == nil
+
+	if !bound {
+		// 未绑定 — 仅在 /start 或 /help 时回复引导语，其余静默
+		if trimmed == "/start" || strings.HasPrefix(trimmed, "/help") || trimmed == "帮助" {
+			msg := "👋 欢迎使用 <b>东方优选</b> 批发商城！\n" +
+				"ស្វាគមន៍ <b>Dongfang Youxuan</b>！\n\n" +
+				"点击下方按钮打开商城，注册账号后即可批发下单。\n" +
+				"ចុចប៊ូតុងខាងក្រោម ដើម្បីបើកហាង និងចុះឈ្មោះ។"
+			go utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+		}
+		return
+	}
+
+	// ── 已绑定账号，按指令分流 ─────────────────────────────────────
+	switch {
+	case trimmed == "/start":
+		go botSendWelcome(db, &user, token, chatIDStr, shopBtn)
+
+	case trimmed == "/orders" || trimmed == "我的订单" || trimmed == "订单" || trimmed == "order":
+		go botSendOrders(db, &user, token, chatIDStr, shopBtn)
+
+	case trimmed == "/help" || trimmed == "帮助" || trimmed == "help":
+		go botSendHelp(token, chatIDStr, shopBtn, user.Role == models.RoleAdmin)
+
+	default:
+		// 其他任何消息 — 回复商城入口
+		name := utils.EscapeHTML(user.FullName)
+		msg := fmt.Sprintf("您好 <b>%s</b>！点击下方进入商城 👇\nសួស្ដី <b>%s</b>！", name, name)
+		go utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+	}
+}
+
+// botSendWelcome 发送欢迎消息（根据角色与审核状态）
+func botSendWelcome(db *gorm.DB, user *models.User, token, chatIDStr string, shopBtn interface{}) {
+	name := utils.EscapeHTML(user.FullName)
+
+	if user.Role == models.RoleAdmin {
+		msg := fmt.Sprintf(
+			"👋 管理员 <b>%s</b>，您好！\n\n"+
+				"您已绑定此 Bot，将收到新订单、库存预警等推送通知。\n\n"+
+				"/orders — 查看待处理订单\n"+
+				"/help — 指令帮助",
+			name,
+		)
+		utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+		return
+	}
+
+	// 商户 — 根据审核状态
+	switch user.ApprovalStatus {
+	case models.ApprovalPending:
+		msg := fmt.Sprintf(
+			"👋 您好，<b>%s</b>！\n\n"+
+				"⏳ 您的账号正在等待管理员审核，审核通过后即可下单。\n"+
+				"គណនីរបស់អ្នកកំពុងរង់ចាំការពិនិត្យ។\n\n"+
+				"您可以先浏览商品，购物车商品会为您保留。",
+			name,
+		)
+		utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+
+	case models.ApprovalRejected:
+		reason := ""
+		if user.RejectedReason != nil && *user.RejectedReason != "" {
+			reason = "\n原因：" + utils.EscapeHTML(*user.RejectedReason)
+		}
+		msg := fmt.Sprintf(
+			"⚠️ 您好，<b>%s</b>！\n\n"+
+				"您的账号审核未通过。%s\n\n"+
+				"请在商城中更新资料后重新提交审核。\n"+
+				"សូមធ្វើបច្ចុប្បន្នភាពព័ត៌មានរបស់អ្នក។",
+			name, reason,
+		)
+		utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+
+	default: // approved
+		var pendingCount int64
+		db.Model(&models.Order{}).
+			Where("merchant_id = ? AND delivery_status = ? AND is_deleted = ?",
+				user.ID, models.DeliveryPending, false).
+			Count(&pendingCount)
+
+		pendingLine := ""
+		if pendingCount > 0 {
+			pendingLine = fmt.Sprintf("\n📦 当前有 <b>%d</b> 个订单等待配货。", pendingCount)
+		}
+
+		msg := fmt.Sprintf(
+			"👋 欢迎回来，<b>%s</b>！\nស្វាគមន៍ <b>%s</b>！%s\n\n"+
+				"发送 /orders 查看最近订单，或点击下方打开商城 👇",
+			name, name, pendingLine,
+		)
+		utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+	}
+}
+
+// botSendOrders 发送最近订单列表
+func botSendOrders(db *gorm.DB, user *models.User, token, chatIDStr string, shopBtn interface{}) {
+	dsText := map[models.DeliveryStatus]string{
+		models.DeliveryPending:    "⏳待配货",
+		models.DeliveryDelivering: "🚚派送中",
+		models.DeliveryDelivered:  "✅已送达",
+		models.DeliveryCancelled:  "❌已取消",
+	}
+	psText := map[models.PaymentStatus]string{
+		models.PaymentUnpaid:  "未结款",
+		models.PaymentCash:    "现结",
+		models.PaymentMonthly: "赊账",
+	}
+
+	if user.Role == models.RoleAdmin {
+		// 管理员查待处理订单
+		var orders []models.Order
+		db.Preload("Merchant").
+			Where("delivery_status = ? AND is_deleted = ?", models.DeliveryPending, false).
+			Order("created_at DESC").Limit(8).Find(&orders)
+		if len(orders) == 0 {
+			utils.SendTelegramMessage(token, chatIDStr, "✅ 当前没有待配货订单。\nគ្មានការបញ្ជាទិញ។", shopBtn)
+			return
+		}
+		msg := fmt.Sprintf("📋 <b>待配货订单（%d条）</b>\n\n", len(orders))
+		for _, o := range orders {
+			mn := ""
+			if o.Merchant != nil {
+				mn = utils.EscapeHTML(o.Merchant.FullName)
+			}
+			msg += fmt.Sprintf("• <b>#%s</b> %s $%.2f\n", o.OrderNo, mn, o.TotalUSD)
+		}
+		utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+		return
+	}
+
+	// 商户查自己的订单
+	var orders []models.Order
+	db.Where("merchant_id = ? AND is_deleted = ?", user.ID, false).
+		Order("created_at DESC").Limit(5).Find(&orders)
+	if len(orders) == 0 {
+		utils.SendTelegramMessage(token, chatIDStr,
+			"您还没有订单记录。\nអ្នកមិនទាន់មានបញ្ជាទិញ។", shopBtn)
+		return
+	}
+
+	msg := "<b>您的最近订单</b> / បញ្ជាទិញ\n\n"
+	for _, o := range orders {
+		ds := dsText[o.DeliveryStatus]
+		if ds == "" {
+			ds = string(o.DeliveryStatus)
+		}
+		ps := psText[o.PaymentStatus]
+		if ps == "" {
+			ps = string(o.PaymentStatus)
+		}
+		msg += fmt.Sprintf("• <b>#%s</b> $%.2f | %s | %s\n",
+			o.OrderNo, o.TotalUSD, ds, ps)
+	}
+	utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
+}
+
+// botSendHelp 发送帮助消息
+func botSendHelp(token, chatIDStr string, shopBtn interface{}, isAdmin bool) {
+	msg := "📖 <b>指令帮助</b>\n\n" +
+		"/start — 欢迎页\n" +
+		"/orders — 查看最近订单\n" +
+		"/help — 帮助\n\n"
+	if isAdmin {
+		msg += "您是管理员，将自动收到订单通知与库存预警推送。"
+	} else {
+		msg += "点击下方按钮打开商城批发下单 👇\nចុចប៊ូតុង ដើម្បីបើកហាង។"
+	}
+	utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
 }

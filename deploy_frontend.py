@@ -16,7 +16,7 @@ print('=== 构建完成\n')
 
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('43.134.85.80', username='ubuntu', password='qer1235A@', timeout=60)
+ssh.connect('43.134.13.229', username='ubuntu', password='qer1235A@', timeout=60)
 
 def run(cmd):
     _, stdout, stderr = ssh.exec_command(cmd)

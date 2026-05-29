@@ -28,7 +28,7 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon" style="background:#16A34A"><van-icon name="goods-o" size="20" /></div>
+        <div class="stat-icon" style="background:#16A34A"><van-icon name="bag-o" size="20" /></div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.totalProducts }}</div>
           <div class="stat-label">{{ $t('admin.totalProducts') }}</div>

@@ -9,7 +9,12 @@
       </template>
     </van-nav-bar>
     
-    <van-empty v-if="cartStore.items.length === 0" :description="$t('cart.empty')">
+    <van-empty v-if="cartStore.items.length === 0" :description="$t('cart.empty')" class="cart-empty">
+      <template #image>
+        <div class="empty-cart-icon">
+          <van-icon name="shopping-cart-o" size="64" color="#d9d9d9" />
+        </div>
+      </template>
       <van-button type="primary" round @click="$router.push('/m/shop')">
         {{ $t('cart.goShopping') }}
       </van-button>
@@ -31,7 +36,7 @@
             <van-checkbox :name="item.id" />
             
             <van-image
-              :src="item.image_url || '/placeholder.png'"
+              :src="item.img1 || item.image_url || ''"
               width="80"
               height="80"
               fit="cover"
@@ -100,14 +105,6 @@
           show-word-limit
           @focus="handleInputFocus"
         />
-        <!-- 配送距离 & 运费（自动估算，只读） -->
-        <van-field
-          v-model="distanceInput"
-          :label="$t('cart.distanceKm')"
-          :placeholder="estimatingFee ? $t('cart.estimating') : '--'"
-          type="number"
-          readonly
-        />
         <van-cell :title="$t('cart.deliveryFee')">
           <template #value>
             <span v-if="estimatingFee" style="color:#999">{{ $t('cart.estimating') }}</span>
@@ -137,7 +134,7 @@
         <van-date-picker
           v-model="pickerDate"
           :min-date="minDate"
-          :title="$t('cart.scheduledAt') + ' — 1/2 选日期'"
+          :title="$t('cart.scheduledAt')"
           @confirm="onDatePickerConfirm"
           @cancel="showDatePicker = false"
         />
@@ -148,7 +145,7 @@
         <van-time-picker
           v-model="pickerTime"
           :columns-type="['hour']"
-          :title="pickerDateValues.join('-') + ' — 2/2 选时间'"
+          :title="pickerDateValues.join('-')"
           @confirm="onTimePickerConfirm"
           @cancel="showTimePicker = false"
         />
@@ -184,11 +181,61 @@
       >
         <van-checkbox v-model="checkAll">{{ $t('cart.selectAll') }}</van-checkbox>
         <template #tip>
-          <span v-if="deliveryFee !== null">{{ $t('cart.itemsAndFee', { count: checkedItems.length, fee: deliveryFee.toFixed(2) }) }}</span>
-          <span v-else>{{ $t('cart.itemCount', { count: checkedItems.length }) }}</span>
+          <span v-if="deliveryFee !== null">
+            {{ $t('cart.itemsAndFee', { count: checkedItems.length, fee: deliveryFee.toFixed(2) }) }}
+            · {{ khrLabel(totalWithFee) }}
+          </span>
+          <span v-else>{{ $t('cart.itemCount', { count: checkedItems.length }) }} · {{ khrLabel(totalWithFee) }}</span>
         </template>
       </van-submit-bar>
     </template>
+
+    <!-- 下单成功面板 -->
+    <van-popup
+      v-model:show="orderResultVisible"
+      position="bottom"
+      round
+      :close-on-click-overlay="false"
+      teleport="body"
+      :style="{ maxHeight: '88vh' }"
+    >
+      <div class="order-result-sheet">
+        <!-- 成功标识（居中，绿色图标） -->
+        <div class="or-success">
+          <van-icon name="passed" size="48" color="#07c160" />
+          <div class="or-success-title">下单成功</div>
+          <div v-if="orderResult" class="or-success-amount">
+            ${{ Number(orderResult.total_usd).toFixed(2) }}
+            <span class="or-success-khr">{{ khrLabel(orderResult.total_usd) }}</span>
+          </div>
+        </div>
+
+        <!-- 付款流程说明 -->
+        <div class="or-notice">
+          <van-icon name="warn-o" size="16" color="#ff976a" class="or-notice-icon" />
+          <span>付款后即可安排派送——请将以下订单信息发给客服，确认付款后将为您安排配送。</span>
+        </div>
+
+        <!-- 订单信息文本块（直接展示，点整块复制） -->
+        <div v-if="orderText" class="or-text-block" @click="copyOrderInfo">
+          <div class="or-text-header">
+            <span class="or-text-label">订单信息</span>
+            <span class="or-copy-tag">点击复制</span>
+          </div>
+          <pre class="or-text-content">{{ orderText }}</pre>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="or-actions">
+          <van-button v-if="contactHref" block type="primary" @click="openContact">
+            <van-icon name="service-o" style="margin-right:6px" />联系客服完成付款
+          </van-button>
+          <van-button block plain type="primary" @click="copyOrderInfo">
+            <van-icon name="description" style="margin-right:6px" />复制订单信息
+          </van-button>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -198,13 +245,56 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showDialog } from 'vant'
 import { useCartStore } from '@/stores/cart'
-import { createOrder, estimateDeliveryFee, estimateDeliveryFeeByAddress } from '@/api'
-import { formatKHR, usdToKhr } from '@/utils/format'
+import { useUserStore } from '@/stores/user'
+import { createOrder, estimateDeliveryFeeByAddress, getContactInfo } from '@/api'
+import { formatKHR, usdToKhr, khrLabel } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
 
 const { t } = useI18n()
 const router = useRouter()
 const cartStore = useCartStore()
+const userStore = useUserStore()
+
+// 下单成功面板
+const orderResult = ref(null)
+const orderResultVisible = ref(false)
+const contactInfoData = ref({})
+
+const contactHref = computed(() => {
+  const c = contactInfoData.value
+  if (c.telegram) return 'https://t.me/' + c.telegram.replace(/^@/, '')
+  if (c.whatsapp) return 'https://wa.me/' + c.whatsapp.replace(/\D/g, '')
+  if (c.phone) return 'tel:' + c.phone
+  return ''
+})
+
+const openContact = () => {
+  if (!contactHref.value) return
+  const tg = window.Telegram?.WebApp
+  if (tg?.openLink) tg.openLink(contactHref.value)
+  else window.open(contactHref.value, '_blank')
+}
+
+const orderText = computed(() => {
+  if (!orderResult.value) return ''
+  const o = orderResult.value
+  let text = `订单号: ${o.order_no}\n`
+  if (o.delivery_address) text += `地址: ${o.delivery_address}\n`
+  if (o.delivery_phone) text += `电话: ${o.delivery_phone}\n`
+  text += `商品:\n`
+  for (const item of o.items || []) {
+    text += `  ${item.product_name} × ${item.quantity} = $${Number(item.subtotal_usd).toFixed(2)}\n`
+  }
+  text += `合计: $${Number(o.total_usd).toFixed(2)}`
+  return text
+})
+
+const copyOrderInfo = () => {
+  if (!orderText.value) return
+  navigator.clipboard?.writeText(orderText.value)
+    .then(() => showSuccessToast('已复制，发给客服即可'))
+    .catch(() => showToast(orderText.value))
+}
 
 const checkedItems = ref(cartStore.items.map(item => item.id))
 const checkAll = computed({
@@ -239,33 +329,11 @@ const onTimePickerConfirm = ({ selectedValues }) => {
   showTimePicker.value = false
 }
 
-// 运费估算
-const distanceInput = ref('')
+// 运费估算（根据地址自动计算，不需要用户手动输入距离）
 const deliveryFee = ref(null)
 const estimatingFee = ref(false)
 const autoEstimated = ref(false)
 let estimateDebounceTimer = null
-
-const doEstimateFee = async () => {
-  const km = parseFloat(distanceInput.value)
-  if (isNaN(km) || km < 0) return
-  estimatingFee.value = true
-  try {
-    const res = await estimateDeliveryFee(km)
-    deliveryFee.value = res.fee ?? res.delivery_fee ?? res.amount ?? null
-  } catch {
-    deliveryFee.value = null
-  } finally {
-    estimatingFee.value = false
-  }
-}
-
-const handleDistanceBlur = () => {
-  if (distanceInput.value !== '') {
-    autoEstimated.value = false
-    doEstimateFee()
-  }
-}
 
 // 根据配送地址文本自动估算
 const autoEstimateFromAddress = async (address) => {
@@ -273,11 +341,7 @@ const autoEstimateFromAddress = async (address) => {
   estimatingFee.value = true
   try {
     const res = await estimateDeliveryFeeByAddress('', address.trim())
-    if (res.warning) {
-      // API 无法解析地址，不覆盖现有值
-      return
-    }
-    if (res.distance_km !== undefined) distanceInput.value = String(Number(res.distance_km).toFixed(1))
+    if (res.warning) return
     deliveryFee.value = res.delivery_fee_usd ?? null
     autoEstimated.value = true
   } catch {
@@ -329,11 +393,21 @@ const orderForm = ref({
   scheduled_at: null,
 })
 
-// 自动根据定位估算运费
-onMounted(() => {
+// 自动根据定位估算运费 + 加载联系方式
+onMounted(async () => {
+  const info = userStore.userInfo
+  if (!orderForm.value.delivery_address && info?.address) {
+    orderForm.value.delivery_address = info.address
+  }
+  if (!orderForm.value.delivery_phone && info?.phone) {
+    orderForm.value.delivery_phone = info.phone
+  }
   if (orderForm.value.delivery_address) {
     autoEstimateFromAddress(orderForm.value.delivery_address)
   }
+  try {
+    contactInfoData.value = await getContactInfo()
+  } catch { /* 静默 */ }
 })
 
 // 地址变更时防抖自动估算
@@ -430,21 +504,21 @@ const handleSubmit = async () => {
       return
     }
     
-    await createOrder({
+    const result = await createOrder({
       items,
       ...orderForm.value,
       client_request_id: clientRequestId.value,
     })
-    
+
     // 清除已下单的商品
     checkedItems.value.forEach(id => {
       cartStore.removeItem(id)
     })
-    
+
     hapticFeedback('success')
-    showSuccessToast(t('cart.orderSuccess'))
     clientRequestId.value = ''
-    router.push('/m/orders')
+    orderResult.value = result
+    orderResultVisible.value = true
   } catch (error) {
     hapticFeedback('error')
     const msg = error?.message || ''
@@ -487,9 +561,14 @@ const handlePrimaryAction = async () => {
 .cart-item {
   display: flex;
   align-items: center;
-  padding: 12px;
+  padding: 14px 12px;
   background: #fff;
   gap: 12px;
+}
+
+/* 商品卡片之间的间距和圆角 */
+.van-swipe-cell + .van-swipe-cell .cart-item {
+  border-top: 1px solid #f0f0f0;
 }
 
 .item-info {
@@ -541,12 +620,162 @@ const handlePrimaryAction = async () => {
   color: #8c8c8c;
 }
 
+/* ===== 增强空状态 ===== */
+.cart-empty {
+  padding-top: 80px;
+}
+.cart-empty :deep(.van-empty__image) {
+  margin-bottom: 8px;
+}
+.empty-cart-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: #fafafa;
+  margin: 0 auto;
+}
+.cart-empty :deep(.van-empty__description) {
+  font-size: 15px;
+  color: #999;
+  margin-top: 12px;
+}
+
+/* ===== 商品列表卡片容器 ===== */
+:deep(.van-checkbox-group) {
+  margin: 8px 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* 商品卡片内部 */
+.cart-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 12px;
+  background: #fff;
+  gap: 12px;
+}
+
+.van-swipe-cell + .van-swipe-cell .cart-item {
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 商品首项增加圆角 */
+:deep(.van-swipe-cell:first-child .cart-item) {
+  border-radius: 12px 12px 0 0;
+}
+:deep(.van-swipe-cell:last-child .cart-item) {
+  border-radius: 0 0 12px 12px;
+}
+:deep(.van-swipe-cell:only-child .cart-item) {
+  border-radius: 12px;
+}
+
 .clear-cart-btn {
   font-size: 13px;
   color: #ee0a24;
   padding: 4px 4px;
   cursor: pointer;
 }
+
+/* ===== 下单成功面板 ===== */
+.order-result-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  max-height: 88vh;
+}
+
+/* 成功标识 */
+.or-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.or-success-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #323233;
+}
+.or-success-amount {
+  font-size: 28px;
+  font-weight: 800;
+  color: #323233;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.or-success-khr {
+  font-size: 13px;
+  font-weight: 400;
+  color: #969799;
+}
+
+/* 付款说明条（Vant warning 色调） */
+.or-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fffbe8;
+  border: 1px solid #f5d87a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #7d4e00;
+  line-height: 1.6;
+}
+.or-notice-icon { margin-top: 1px; flex-shrink: 0; }
+
+/* 订单信息文本块 */
+.or-text-block {
+  border: 1px solid #ebedf0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.or-text-block:active { background: #f7f8fa; }
+.or-text-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #ebedf0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #323233;
+}
+.or-copy-tag {
+  font-size: 11px;
+  color: #1989fa;
+  font-weight: 400;
+}
+.or-text-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #323233;
+  padding: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: min(200px, 30vh);
+  overflow-y: auto;
+  background: #fff;
+}
+
+/* 操作按钮 */
+.or-actions { display: flex; flex-direction: column; gap: 10px; }
 
 .checkout-disabled-tip {
   margin-bottom: 8px;

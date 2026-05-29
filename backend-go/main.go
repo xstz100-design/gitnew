@@ -163,6 +163,7 @@ func main() {
 		productsAdmin.GET("/expiring", handlers.ListExpiringProducts)
 		productsAdmin.PATCH("/:id", handlers.UpdateProduct)
 		productsAdmin.DELETE("/:id", handlers.DeleteProduct)
+		productsAdmin.GET("/:id/ledger", handlers.GetProductLedger)
 	}
 
 	// ── 订单

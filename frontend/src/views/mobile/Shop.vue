@@ -34,178 +34,121 @@
           <van-icon name="phone-o" />
           <span>{{ $t('common.contactUs') }}</span>
         </button>
-        <button v-if="contactInfo.telegram" class="telegram-header-btn" @click="openTelegram">
-          <van-icon name="send-gift-o" size="16" />
-        </button>
         <button class="lang-btn" @click="toggleLang">{{ langLabel }}</button>
       </div>
     </div>
 
-    <!-- 促销跑马灯合并区域（更紧凑） -->
-    <div class="promo-section" v-if="newProducts.length > 0 || discountProducts.length > 0">
-      <div class="promo-tabs">
-        <span
-          class="promo-tab"
-          :class="{ active: promoActive === 'new' }"
-          @click="promoActive = 'new'"
-          v-if="newProducts.length > 0"
-        >
-          <span>🔥</span> {{ $t('product.newProducts') }}
-        </span>
-        <span
-          class="promo-tab"
-          :class="{ active: promoActive === 'discount' }"
-          @click="promoActive = 'discount'"
-          v-if="discountProducts.length > 0"
-        >
-          <span>🏷️</span> {{ $t('product.discountProducts') }}
-        </span>
-      </div>
-      <div class="promo-marquee">
-        <div
-          class="marquee-track"
-          :style="{ animationDuration: promoActive === 'new' ? newProductsDuration : discountProductsDuration }"
-          v-if="promoActive === 'new' && newProducts.length > 0"
-        >
-          <div class="marquee-group">
-            <div v-for="product in newProducts" :key="'na-'+product.id" class="promo-card" @click="showDetail(product)">
-              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
-              <div v-else class="promo-img-ph"><van-icon name="photo-o" size="12" color="#ccc" /></div>
-              <span class="promo-badge">NEW</span>
-              <div class="promo-card-price">${{ product.price_usd }}</div>
+    <!-- Banner 轮播（管理员上传，固定高宽比，任意尺寸自动裁切） -->
+    <div v-if="banners.length > 0" class="banner-wrap">
+      <van-swipe :autoplay="3500" :show-indicators="banners.length > 1" indicator-color="#c76b35" lazy-render>
+        <van-swipe-item v-for="(url, i) in banners" :key="'bn-'+i">
+          <img :src="url" class="banner-img" loading="lazy" />
+        </van-swipe-item>
+      </van-swipe>
+    </div>
+
+    <!-- 折扣商品横条（仅折扣） -->
+    <div v-if="discountProducts.length > 0" class="discount-strip">
+      <span class="ds-label">🏷️ {{ $t('product.discountProducts') }}</span>
+      <div class="ds-scroll">
+        <div class="ds-track" :style="{ animationDuration: discountProductsDuration }">
+          <div class="ds-group">
+            <div v-for="product in discountProducts" :key="'da-'+product.id" class="ds-card" @click="showDetail(product)">
+              <img v-if="getProductImage(product)" :src="getProductImage(product)" class="ds-img" loading="lazy" />
+              <div v-else class="ds-img-ph"><van-icon name="photo-o" size="10" color="#ccc" /></div>
+              <div class="ds-price">${{ product.price_usd }}</div>
             </div>
           </div>
-          <div v-if="newProducts.length > 1" class="marquee-group">
-            <div v-for="product in newProducts" :key="'nb-'+product.id" class="promo-card" @click="showDetail(product)">
-              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
-              <div v-else class="promo-img-ph"><van-icon name="photo-o" size="12" color="#ccc" /></div>
-              <span class="promo-badge">NEW</span>
-              <div class="promo-card-price">${{ product.price_usd }}</div>
-            </div>
-          </div>
-        </div>
-        <div
-          class="marquee-track"
-          :style="{ animationDuration: promoActive === 'new' ? newProductsDuration : discountProductsDuration }"
-          v-if="promoActive === 'discount' && discountProducts.length > 0"
-        >
-          <div class="marquee-group">
-            <div v-for="product in discountProducts" :key="'da-'+product.id" class="promo-card" @click="showDetail(product)">
-              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
-              <div v-else class="promo-img-ph"><van-icon name="photo-o" size="12" color="#ccc" /></div>
-              <span class="promo-badge dc-badge">{{ $t('product.discountBadge') }}</span>
-              <div class="promo-card-price">${{ product.price_usd }}</div>
-            </div>
-          </div>
-          <div v-if="discountProducts.length > 1" class="marquee-group">
-            <div v-for="product in discountProducts" :key="'db-'+product.id" class="promo-card" @click="showDetail(product)">
-              <img v-if="getProductImage(product)" :src="getProductImage(product)" :alt="product.name" loading="lazy" />
-              <div v-else class="promo-img-ph"><van-icon name="photo-o" size="12" color="#ccc" /></div>
-              <span class="promo-badge dc-badge">{{ $t('product.discountBadge') }}</span>
-              <div class="promo-card-price">${{ product.price_usd }}</div>
+          <div v-if="discountProducts.length > 1" class="ds-group">
+            <div v-for="product in discountProducts" :key="'db-'+product.id" class="ds-card" @click="showDetail(product)">
+              <img v-if="getProductImage(product)" :src="getProductImage(product)" class="ds-img" loading="lazy" />
+              <div v-else class="ds-img-ph"><van-icon name="photo-o" size="10" color="#ccc" /></div>
+              <div class="ds-price">${{ product.price_usd }}</div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 主体：左侧分类 + 右侧商品 -->
-    <div class="main-body">
-      <!-- 左侧分类侧边栏 -->
-      <div class="cat-sidebar" ref="catSidebarRef">
-        <div
-          v-for="cat in categories"
-          :key="cat.id"
-          class="cat-item"
-          :class="{ active: activeCat === cat.id }"
-          @click="switchCategory(cat.id)"
-        >
-          <span class="cat-dot" :class="{ active: activeCat === cat.id }"></span>
-          <span class="cat-name">{{ cat.name }}</span>
+    <!-- 横向分类标签 -->
+    <div class="cat-tabs-strip">
+      <div
+        v-for="cat in categories"
+        :key="cat.id"
+        class="cat-tab-item"
+        :class="{ active: activeCat === cat.id }"
+        @click="switchCategory(cat.id)"
+      >{{ cat.name }}</div>
+    </div>
+
+    <!-- 商品区域（全宽） -->
+    <div class="product-area">
+      <div v-if="loading" class="skeleton-grid">
+        <div v-for="i in 6" :key="i" class="skeleton-card">
+          <div class="skeleton-img shimmer"></div>
+          <div class="skeleton-name shimmer"></div>
+          <div class="skeleton-price shimmer"></div>
         </div>
       </div>
-
-      <!-- 右侧商品区域 -->
-      <div class="product-area" ref="scrollContainer">
-        <!-- 骨架屏 -->
-        <div v-if="loading" class="skeleton-grid">
-          <div v-for="i in 6" :key="i" class="skeleton-card">
-            <div class="skeleton-img shimmer"></div>
-            <div class="skeleton-name shimmer"></div>
-            <div class="skeleton-price shimmer"></div>
+      <van-empty v-else-if="filteredProducts.length === 0" :description="$t('common.noData')" />
+      <div v-else class="product-grid">
+        <div
+          v-for="product in filteredProducts"
+          :key="product.id"
+          class="product-card"
+          @click="showDetail(product)"
+        >
+          <div class="card-image">
+            <img
+              v-if="getProductImage(product)"
+              :src="getProductImage(product)"
+              :alt="product.name"
+              loading="lazy"
+            />
+            <div v-else class="image-placeholder">
+              <van-icon name="photo-o" size="24" color="#ccc" />
+            </div>
+            <span v-if="product.stock <= 0" class="badge-out">{{ $t('product.outOfStock') }}</span>
+            <span v-else-if="product.is_low_stock" class="badge-low">{{ $t('product.lowStock') }}</span>
+            <span v-if="product.is_featured" class="badge-featured">★</span>
+            <span v-if="product.is_discounted" class="badge-sale">特价</span>
+            <span v-if="product.expiry_date && isNearExpiry(product.expiry_date)" class="badge-expiry">临期</span>
           </div>
-        </div>
-
-        <!-- 空状态 -->
-        <van-empty v-else-if="filteredProducts.length === 0" :description="$t('common.noData')" />
-
-        <!-- 商品网格 -->
-        <div v-else class="product-grid">
-          <div
-            v-for="product in filteredProducts"
-            :key="product.id"
-            class="product-card"
-            @click="showDetail(product)"
-          >
-            <!-- 图片 -->
-            <div class="card-image">
-              <img
-                v-if="getProductImage(product)"
-                :src="getProductImage(product)"
-                :alt="product.name"
-                loading="lazy"
+          <div class="card-name">{{ product.name }}</div>
+          <div class="card-price-row">
+            <span class="price-val">${{ product.price_usd }}</span>
+            <span class="price-unit">/{{ product.unit || $t('product.unitFallback') }}</span>
+          </div>
+          <div class="card-khr">{{ khrLabel(product.price_usd) }}</div>
+          <div v-if="product.unit_weight_value" class="card-weight">
+            {{ product.unit_weight_value }}{{ product.unit_weight_unit || 'g' }}
+          </div>
+          <div v-if="product.price_per_piece_usd || product.price_per_package_usd" class="card-prices">
+            <span v-if="product.price_per_piece_usd" class="price-badge">
+              件 ${{ Number(product.price_per_piece_usd).toFixed(2) }}
+            </span>
+            <span v-if="product.price_per_package_usd" class="price-badge price-case">
+              箱 ${{ Number(product.price_per_package_usd).toFixed(2) }}
+            </span>
+          </div>
+          <div class="card-action" @click.stop>
+            <div v-if="getCartQty(product.id) > 0" class="qty-control">
+              <button class="qty-btn" @click="decrementCart(product)">−</button>
+              <input
+                v-if="editingQtyId === product.id"
+                class="qty-input"
+                type="number"
+                :value="getCartQty(product.id)"
+                @blur="onQtyInputBlur(product, $event)"
+                @keyup.enter="$event.target.blur()"
+                autofocus
               />
-              <div v-else class="image-placeholder">
-                <van-icon name="photo-o" size="24" color="#ccc" />
-              </div>
-              <!-- 标记 -->
-              <span v-if="product.stock <= 0" class="badge-out">{{ $t('product.outOfStock') }}</span>
-              <span v-else-if="product.is_low_stock" class="badge-low">{{ $t('product.lowStock') }}</span>
-              <span v-if="product.is_featured" class="badge-featured">{{ $t('product.recommended') }}</span>
+              <span v-else class="qty-num" @click="startEditQty(product)">{{ getCartQty(product.id) }}</span>
+              <button class="qty-btn" @click="incrementCart(product)">+</button>
             </div>
-
-            <!-- 名称 -->
-            <div class="card-name">{{ product.name }}</div>
-
-            <!-- 单价 -->
-            <div class="card-price-row">
-              <span class="price-val">${{ product.price_usd }}</span>
-              <span class="price-unit">/{{ product.unit || $t('product.unitFallback') }}</span>
-            </div>
-
-            <!-- 阶梯/批发价格（突出显示） -->
-            <div v-if="product.price_per_piece_usd || product.price_per_package_usd" class="card-tiers">
-              <div v-if="product.price_per_piece_usd" class="tier-row">
-                <span class="tier-label">{{ $t('product.pricePerPiece') }}</span>
-                <span class="tier-value">${{ Number(product.price_per_piece_usd).toFixed(2) }}<em v-if="product.unit_name">/{{ product.unit_name }}</em></span>
-              </div>
-              <div v-if="product.price_per_package_usd" class="tier-row tier-bulk">
-                <span class="tier-label">{{ $t('product.pricePerPackage') }}</span>
-                <span class="tier-value">${{ Number(product.price_per_package_usd).toFixed(2) }}<em v-if="product.pack_name">/{{ product.pack_name }}</em></span>
-              </div>
-            </div>
-
-            <!-- 加购按钮 -->
-            <div class="card-action" @click.stop>
-              <div v-if="getCartQty(product.id) > 0" class="qty-control">
-                <button class="qty-btn" @click="decrementCart(product)">−</button>
-                <input
-                  v-if="editingQtyId === product.id"
-                  class="qty-input"
-                  type="number"
-                  :value="getCartQty(product.id)"
-                  @blur="onQtyInputBlur(product, $event)"
-                  @keyup.enter="$event.target.blur()"
-                  ref="qtyInputRef"
-                  autofocus
-                />
-                <span v-else class="qty-num" @click="startEditQty(product)">{{ getCartQty(product.id) }}</span>
-                <button class="qty-btn" @click="incrementCart(product)">+</button>
-              </div>
-              <button v-else class="add-btn" :disabled="product.stock <= 0" @click="incrementCart(product)">
-                {{ $t('product.addToCart') }}
-              </button>
-            </div>
+            <button v-else class="add-btn" :disabled="product.stock <= 0" @click="incrementCart(product)">
+              {{ $t('product.addToCart') }}
+            </button>
           </div>
         </div>
       </div>
@@ -225,6 +168,13 @@
       </div>
       <button class="checkout-btn" @click="goToCart">{{ $t('product.checkout') }}</button>
     </div>
+
+    <!-- 回到顶部 -->
+    <transition name="fab-fade">
+      <div v-if="showBackToTop" class="back-top-btn" @click="scrollToTop">
+        <van-icon name="arrow-up" size="20" color="#555" />
+      </div>
+    </transition>
 
     <!-- 联系弹窗 -->
     <van-popup
@@ -261,7 +211,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast } from 'vant'
@@ -269,6 +219,7 @@ import { getProducts, getCategories, getPublicAnnouncements, getContactInfo } fr
 import { useCartStore } from '@/stores/cart'
 import { hapticFeedback } from '@/utils/device'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
+import { khrLabel } from '@/utils/format'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -281,7 +232,6 @@ const activeCat = ref('all')
 const categories = ref([{ id: 'all', name: t('product.all') }])
 const notices = ref([])
 const currentLang = ref(getCurrentLanguage())
-const promoActive = ref('new')
 
 const toggleLang = () => {
   const order = ['zh', 'en', 'kh']
@@ -374,31 +324,39 @@ const filteredProducts = computed(() => {
   })
 })
 
-// 新品推荐 — 仅管理员勾选推荐的商品
-const newProducts = computed(() => {
-  if (!products.value.length) return []
-  return [...products.value]
-    .filter(p => p.is_featured)
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 10)
-})
-
 // 折扣专区 — 管理员勾选 is_discounted 的商品
 const discountProducts = computed(() => {
   if (!products.value.length) return []
   return products.value.filter(p => p.is_discounted).slice(0, 20)
 })
 
+// Banner — 从公告接口读取（type='banner'，content_zh 存图片URL）
+const banners = ref([])
+const loadBanners = async () => {
+  try {
+    const data = await getPublicAnnouncements('banner')
+    banners.value = data.filter(b => b.content_zh).map(b => b.content_zh)
+  } catch {
+    // 静默处理
+  }
+}
+
 // 跑马灯速度统一：每件商品约 83px（75px卡片+8px间距），目标速度 40px/s
 const MARQUEE_SPEED = 40
 const CARD_PX = 83
 const marqueeDuration = (count) => count <= 1 ? '0s' : `${Math.max(6, Math.round(count * CARD_PX / MARQUEE_SPEED))}s`
-const newProductsDuration = computed(() => marqueeDuration(newProducts.value.length))
 const discountProductsDuration = computed(() => marqueeDuration(discountProducts.value.length))
 
 // 获取商品首图
 const getProductImage = (product) => {
   return product.img1 || product.image_url || ''
+}
+
+// 30天内临期
+const isNearExpiry = (dateStr) => {
+  if (!dateStr) return false
+  const days = (new Date(dateStr) - Date.now()) / 86400000
+  return days >= 0 && days <= 30
 }
 
 // 购物车数量
@@ -475,14 +433,32 @@ const goToCart = () => {
   router.push('/m/cart')
 }
 
+// 回到顶部
+const showBackToTop = ref(false)
+
+const handleScroll = () => {
+  showBackToTop.value = window.scrollY > 300
+}
+
+const scrollToTop = () => {
+  hapticFeedback('light')
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadProducts(), loadNotices(), loadContactInfo()])
+  await Promise.all([loadCategories(), loadProducts(), loadNotices(), loadContactInfo(), loadBanners()])
   // 从商品中补充分类
   if (categories.value.length <= 1) {
     const cats = new Set()
     products.value.forEach(p => { if (p.category) cats.add(p.category) })
     cats.forEach(c => categories.value.push({ id: c, name: c }))
   }
+  // 监听滚动
+  window.addEventListener('scroll', handleScroll, { passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll)
 })
 </script>
 
@@ -569,23 +545,6 @@ onMounted(async () => {
   transition: background 0.2s;
 }
 
-.telegram-header-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border: 1.5px solid #a8c4e2;
-  border-radius: 8px;
-  background: #eef4fb;
-  color: #2b6cb0;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.telegram-header-btn:active {
-  background: #d8e5f5;
-}
 .contact-btn:active {
   background: #ffede3;
 }
@@ -610,177 +569,11 @@ onMounted(async () => {
   background: #f5f5f5;
 }
 
-/* ===== 促销跑马灯（合并） ===== */
-.promo-section {
-  background: #fff;
-  margin: 0;
-  border-bottom: 1px solid #f0f0f0;
-  padding: 6px 0;
-}
-
-.promo-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 0 12px 6px;
-}
-
-.promo-tab {
-  font-size: 11px;
-  color: #999;
-  background: #f5f5f7;
-  padding: 3px 10px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
-}
-.promo-tab.active {
-  background: #2b2b2b;
-  color: #fff;
-}
-
-.promo-marquee {
-  overflow: hidden;
-  padding: 0 0 2px 12px;
-  -webkit-mask-image: linear-gradient(to right, #000 82%, transparent 100%);
-  mask-image: linear-gradient(to right, #000 82%, transparent 100%);
-}
-
-@keyframes marqueeLeft {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-.marquee-track {
-  display: flex;
-  width: max-content;
-  gap: 0;
-  animation-name: marqueeLeft;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.marquee-group {
-  display: flex;
-  gap: 6px;
-}
-
-.promo-card {
-  flex-shrink: 0;
-  width: 64px;
-  border-radius: 6px;
-  overflow: hidden;
-  position: relative;
-  background: #fafafa;
-  cursor: pointer;
-}
-.promo-card img {
-  width: 100%;
-  height: 48px;
-  object-fit: cover;
-  display: block;
-}
-.promo-img-ph {
-  width: 100%;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.promo-badge {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  background: linear-gradient(135deg, #ff4d4f, #ff7a45);
-  color: #fff;
-  font-size: 7px;
-  font-weight: 700;
-  padding: 1px 3px;
-  border-radius: 2px;
-  line-height: 1.2;
-}
-.dc-badge {
-  background: linear-gradient(135deg, #f5a623, #e8222e);
-}
-.promo-card-price {
-  font-size: 9px;
-  font-weight: 700;
-  color: #e8222e;
-  padding: 1px 4px 3px;
-  line-height: 1.2;
-}
-
-/* ===== 主体：左侧分类 + 右侧商品 ===== */
-.main-body {
-  display: flex;
-  min-height: calc(100vh - 260px);
-}
-
-/* 左侧侧边栏 */
-.cat-sidebar {
-  width: 76px;
-  flex-shrink: 0;
-  background: #fafafa;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  border-right: 1px solid #f0f0f0;
-  padding: 4px 0 12px;
-  position: sticky;
-  top: 0;
-  align-self: flex-start;
-  max-height: calc(100vh - 180px);
-}
-
-.cat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 8px;
-  font-size: 12px;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-  border-left: 3px solid transparent;
-}
-.cat-item.active {
-  color: #1a1a1a;
-  font-weight: 600;
-  background: #fff;
-  border-left-color: #c76b35;
-}
-
-.cat-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #ddd;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-.cat-dot.active {
-  background: #c76b35;
-  width: 6px;
-  height: 6px;
-}
-
-.cat-name {
-  line-height: 1.3;
-  word-break: break-all;
-}
-
-/* 右侧商品区域 */
-.product-area {
-  flex: 1;
-  min-width: 0;
-  padding: 6px;
-}
-
 /* ===== 商品网格 ===== */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
+  gap: 8px;
 }
 
 .product-card {
@@ -790,6 +583,8 @@ onMounted(async () => {
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   border: 1px solid #f0f0f0;
   transition: box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
 }
 .product-card:active {
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
@@ -828,34 +623,37 @@ onMounted(async () => {
 
 .badge-out,
 .badge-low,
-.badge-featured {
+.badge-featured,
+.badge-sale,
+.badge-expiry {
   position: absolute;
   font-size: 9px;
   padding: 1px 5px;
   border-radius: 2px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
 }
 .badge-out {
-  top: 5px;
-  right: 5px;
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #dc2626;
+  top: 5px; right: 5px;
+  background: #fef2f2; color: #dc2626; border: 1px solid #dc2626;
 }
 .badge-low {
-  top: 5px;
-  right: 5px;
-  background: #fff7ed;
-  color: #ea580c;
-  border: 1px solid #ea580c;
+  top: 5px; right: 5px;
+  background: #fff7ed; color: #ea580c; border: 1px solid #ea580c;
 }
 .badge-featured {
-  top: 5px;
-  left: 5px;
-  background: #fff0f0;
-  color: #e8222e;
-  border: 1px solid #e8222e;
+  top: 5px; left: 5px;
+  background: rgba(0,0,0,0.55); color: #ffd700;
+  border: none; font-size: 11px;
+}
+.badge-sale {
+  top: 5px; left: 5px;
+  background: #e8222e; color: #fff; border: none;
+  font-size: 10px; padding: 2px 5px;
+}
+.badge-expiry {
+  bottom: 5px; left: 5px;
+  background: #f59e0b; color: #fff; border: none;
 }
 
 .card-name {
@@ -888,40 +686,44 @@ onMounted(async () => {
   font-size: 10px;
   color: #bbb;
 }
-
-/* 阶梯价 */
-.card-tiers {
-  padding: 2px 6px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.tier-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.card-khr {
+  padding: 0 6px 1px;
   font-size: 10px;
-  background: #fafafa;
+  color: #999;
+  line-height: 1.3;
+}
+.card-weight {
+  padding: 0 6px 1px;
+  font-size: 10px;
+  color: #aaa;
+  line-height: 1.3;
+}
+
+/* 件/箱价格 badge（紧凑一行） */
+.card-prices {
+  padding: 3px 6px 0;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.price-badge {
+  font-size: 10px;
+  padding: 1px 6px;
   border-radius: 3px;
-  padding: 2px 5px;
-}
-.tier-label {
-  color: #888;
-}
-.tier-value {
-  font-weight: 600;
+  background: #f5f5f7;
   color: #555;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.tier-value em {
-  font-style: normal;
-  color: #bbb;
-}
-.tier-bulk .tier-value {
+.price-case {
+  background: #eef4ff;
   color: #1a4ed8;
 }
 
+/* 加购按钮 — 始终贴底 */
 .card-action {
-  padding: 3px 6px 6px;
+  margin-top: auto;
+  padding: 4px 6px 7px;
 }
 
 .add-btn {
@@ -1133,5 +935,162 @@ onMounted(async () => {
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+
+/* ===== 回到顶部按钮 ===== */
+.back-top-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 162px;
+  z-index: 99;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.back-top-btn:active {
+  transform: scale(0.9);
+}
+
+/* ===== Banner 轮播 ===== */
+.banner-wrap {
+  width: 100%;
+  background: #f5f5f5;
+  overflow: hidden;
+}
+:deep(.banner-wrap .van-swipe) {
+  height: 160px;
+}
+.banner-img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+/* ===== 折扣区（更大，更突出） ===== */
+.discount-strip {
+  background: #fff8f8;
+  border-bottom: 1px solid #f5e0e0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+.ds-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e8222e;
+  flex-shrink: 0;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+.ds-scroll {
+  flex: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+}
+.ds-track {
+  display: flex;
+  width: max-content;
+  animation-name: marqueeLeft;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes marqueeLeft {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ds-group { display: flex; gap: 8px; }
+.ds-card {
+  flex-shrink: 0;
+  width: 72px;
+  border-radius: 7px;
+  overflow: hidden;
+  position: relative;
+  background: #fff;
+  border: 1px solid #f5e0e0;
+  cursor: pointer;
+}
+.ds-img {
+  width: 100%;
+  height: 62px;
+  object-fit: cover;
+  display: block;
+}
+.ds-img-ph {
+  width: 100%;
+  height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+}
+.ds-price {
+  font-size: 10px;
+  font-weight: 700;
+  color: #e8222e;
+  padding: 2px 4px 4px;
+  text-align: center;
+}
+
+/* ===== 横向分类标签 ===== */
+.cat-tabs-strip {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.cat-tabs-strip::-webkit-scrollbar { display: none; }
+.cat-tab-item {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: #555;
+  background: #f5f5f7;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.cat-tab-item.active {
+  background: #c76b35;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ===== 商品区域（全宽） ===== */
+.product-area {
+  padding: 8px;
+}
+
+/* ===== FAB 过渡动画 ===== */
+.fab-fade-enter-active,
+.fab-fade-leave-active {
+  transition: opacity 0.3s, transform 0.3s;
+}
+.fab-fade-enter-from,
+.fab-fade-leave-to {
+  opacity: 0;
+  transform: translateY(16px);
 }
 </style>

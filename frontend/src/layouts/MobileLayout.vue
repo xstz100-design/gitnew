@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
@@ -55,6 +55,8 @@ const isTgContext = ref(typeof window !== 'undefined' && !!window.Telegram?.WebA
 const tgTopPadding = ref(isTgContext.value && window.innerWidth < 600 ? 72 : 0)
 
 onMounted(() => {
+  document.body.classList.add('mobile-layout-active')
+
   const tg = window.Telegram?.WebApp
   if (!tg) return
 
@@ -98,6 +100,10 @@ const handleTabChange = (index) => {
   const routes = ['/m/shop', '/m/cart', '/m/profile']
   router.push(routes[index])
 }
+
+onUnmounted(() => {
+  document.body.classList.remove('mobile-layout-active')
+})
 </script>
 
 <style scoped>
@@ -223,4 +229,35 @@ const handleTabChange = (index) => {
   font-size: 20px;
 }
 
+</style>
+
+<!-- 非 scoped：桌面端将 teleport="body" 的 Vant 弹窗约束在 520px 移动容器内 -->
+<style>
+@media (min-width: 600px) {
+  body.mobile-layout-active .van-popup--bottom,
+  body.mobile-layout-active .van-popup--top {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    transform: translateX(-50%) !important;
+  }
+
+  body.mobile-layout-active .van-action-sheet {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    transform: translateX(-50%) !important;
+  }
+
+  /* 购物车结算栏 */
+  body.mobile-layout-active .van-submit-bar {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    transform: translateX(-50%) !important;
+  }
+}
 </style>

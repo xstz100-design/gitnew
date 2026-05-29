@@ -1,668 +1,386 @@
 <template>
-  <div class="products-page">
+  <div class="page-container">
     <div class="page-header">
       <h2>{{ $t('admin.products') }}</h2>
       <div class="header-btns">
-        <el-button @click="showInventoryPreview" :size="mobile ? 'small' : 'default'">
-          <el-icon><document /></el-icon>
-          {{ $t('product.inventoryPreview') }}
-        </el-button>
-        <el-button type="success" plain @click="importVisible = true" :size="mobile ? 'small' : 'default'">
-          <el-icon><upload /></el-icon>
-          {{ $t('product.batchImport') }}
-        </el-button>
-        <el-button type="primary" @click="handleAdd" :size="mobile ? 'small' : 'default'">
-          <el-icon><plus /></el-icon>
-          {{ $t('product.addProduct') }}
-        </el-button>
+        <van-button size="small" icon="description" @click="showInventoryPreview">{{ $t('product.inventoryPreview') }}</van-button>
+        <van-button type="success" size="small" plain icon="upgrade" @click="importVisible = true">{{ $t('product.batchImport') }}</van-button>
+        <van-button type="primary" size="small" icon="plus" @click="handleAdd">{{ $t('product.addProduct') }}</van-button>
       </div>
     </div>
 
     <!-- 搜索和分类过滤 -->
     <div class="search-filter-bar">
-      <el-input
-        v-model="adminSearchKeyword"
-        :placeholder="$t('product.searchPlaceholder')"
-        clearable
-        :prefix-icon="Search"
-        :style="mobile ? '' : 'max-width:300px'"
-        @clear="adminSearchKeyword = ''"
-      />
-      <el-select v-model="adminFilterCat" clearable :placeholder="$t('product.all') + ' ' + $t('admin.categories')" style="width:150px">
-        <el-option v-for="c in adminCategories" :key="c" :label="c" :value="c" />
-      </el-select>
+      <van-search v-model="adminSearchKeyword" :placeholder="$t('product.searchPlaceholder')" shape="round" style="flex:1;padding:0;" />
+      <select v-model="adminFilterCat" class="filter-select">
+        <option value="">{{ $t('product.all') }}</option>
+        <option v-for="c in adminCategories" :key="c" :value="c">{{ c }}</option>
+      </select>
     </div>
 
-    <!-- 桌面端: 表格视图 -->
-    <el-table
-      v-if="!mobile"
-      v-loading="loading"
-      :data="paginatedProducts"
-      border
-      row-key="id"
-      :default-sort="{ prop: 'sort_order', order: 'ascending' }"
-    >
-      <el-table-column :label="$t('product.sortOrder')" prop="sort_order" width="70" sortable />
-      <el-table-column label="ID" prop="id" width="60" sortable />
-      <el-table-column :label="$t('product.image')" width="80">
-        <template #default="{ row }">
-          <el-image
-            v-if="row.img1"
-            :src="row.img1"
-            :preview-src-list="getImageList(row)"
-            fit="cover"
-            style="width: 50px; height: 50px; border-radius: 4px;"
-          />
-          <span v-else style="color: #ccc; font-size: 12px;">{{ $t('product.noImage') }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.name')" prop="name" min-width="140" />
-      <el-table-column :label="$t('product.nameKh')" prop="name_kh" width="130" />
-      <el-table-column :label="$t('product.nameEn')" prop="name_en" width="130" />
-      <el-table-column :label="$t('product.category')" prop="category" width="100" />
-      <el-table-column :label="$t('product.unit')" prop="unit" width="70" />
-      <el-table-column :label="$t('product.price')" width="110" sortable prop="price_usd">
-        <template #default="{ row }">
-          {{ formatUSD(row.price_usd) }}
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.stock')" width="90" sortable prop="stock">
-        <template #default="{ row }">
-          <el-tag :type="row.is_low_stock ? 'warning' : 'success'" size="small">
-            {{ row.stock }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.stockWarning')" prop="stock_warning" width="75" />
-      <el-table-column :label="$t('product.expiryDate')" width="110" prop="expiry_date">
-        <template #default="{ row }">
-          <span v-if="row.expiry_date" :style="isExpiringSoon(row.expiry_date) ? 'color:#f56c6c;font-weight:600' : ''">
-            {{ formatDate(row.expiry_date) }}
-          </span>
-          <span v-else style="color:#ccc">-</span>
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.status')" width="85">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.is_active"
-            size="small"
-            :active-text="$t('product.onSale')"
-            :inactive-text="$t('product.offSale')"
-            inline-prompt
-            @change="(val) => toggleActive(row, val)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.featured')" width="75">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.is_featured"
-            size="small"
-            @change="(val) => toggleFeatured(row, val)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('product.discounted')" width="75">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.is_discounted"
-            size="small"
-            @change="(val) => toggleDiscounted(row, val)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column :label="$t('common.operation')" width="140" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" link size="small" @click="handleEdit(row)">{{ $t('common.edit') }}</el-button>
-          <el-button type="danger" link size="small" @click="handleDelete(row)">{{ $t('common.delete') }}</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <van-loading v-if="loading" size="24" vertical style="padding: 40px 0; text-align:center" />
 
-    <!-- 移动端: 卡片列表 -->
-    <div v-else v-loading="loading" class="mobile-card-list">
+    <div v-else class="card-list">
       <div v-for="row in paginatedProducts" :key="row.id" class="product-card" @click="handleEdit(row)">
-        <div class="card-left">
-          <el-image
-            v-if="row.img1"
-            :src="row.img1"
-            fit="cover"
-            class="card-img"
-          />
-          <div v-else class="card-img card-img-empty">
-            <el-icon :size="20"><goods /></el-icon>
-          </div>
+        <div class="pc-left">
+          <img v-if="row.img1" :src="row.img1" class="pc-img" />
+          <div v-else class="pc-img pc-img-empty"><van-icon name="goods-o" size="24" color="#c0c4cc" /></div>
         </div>
-        <div class="card-right">
-          <div class="card-title-row">
-            <span class="card-name">{{ row.name }}</span>
-            <el-tag :type="row.is_active ? 'success' : 'info'" size="small" @click.stop="toggleActive(row, !row.is_active)">
+        <div class="pc-right">
+          <div class="pc-title-row">
+            <span class="pc-name">{{ row.name }}</span>
+            <van-tag :type="row.is_active ? 'success' : 'primary'" size="medium" @click.stop="toggleActive(row, !row.is_active)">
               {{ row.is_active ? $t('product.onSale') : $t('product.offSale') }}
-            </el-tag>
+            </van-tag>
           </div>
-          <div class="card-meta">
-            <span v-if="row.category" class="card-cat">{{ row.category }}</span>
-            <span v-if="row.unit" class="card-unit">/ {{ row.unit }}</span>
+          <div class="pc-meta">
+            <span v-if="row.category" class="pc-cat">{{ row.category }}</span>
+            <span v-if="row.unit" class="pc-unit">/ {{ row.unit }}</span>
+            <van-tag v-if="row.is_featured" type="warning" size="small" style="margin-left:4px">★</van-tag>
+            <van-tag v-if="row.is_discounted" type="danger" size="small" style="margin-left:4px">折</van-tag>
           </div>
-          <div class="card-bottom">
-            <span class="card-price">{{ formatUSD(row.price_usd) }}</span>
-            <div class="card-stock-control" @click.stop>
-              <button class="stock-btn stock-minus" @click="openQuickDelta(row, 'pick')" :disabled="row.stock <= 0">−</button>
+          <div v-if="row.expiry_date" class="pc-expiry" :style="isExpiringSoon(row.expiry_date) ? 'color:#f56c6c;font-weight:600' : 'color:#909399'">
+            {{ $t('product.expiryDate') }}: {{ formatDate(row.expiry_date) }}
+          </div>
+          <div class="pc-bottom">
+            <span class="pc-price">{{ formatUSD(row.price_usd) }}</span>
+            <div class="stock-control" @click.stop>
+              <button class="stock-btn" @click="openQuickDelta(row, 'pick')" :disabled="row.stock <= 0">−</button>
               <span class="stock-num" :class="{ 'stock-warn': row.is_low_stock }" @click="openStockDrawer(row)">{{ row.stock }}</span>
-              <button class="stock-btn stock-plus" @click="openQuickDelta(row, 'restock')">+</button>
+              <button class="stock-btn" @click="openQuickDelta(row, 'restock')">+</button>
             </div>
           </div>
         </div>
-        <div class="card-actions" @click.stop>
-          <el-button type="danger" link size="small" @click="handleDelete(row)">
-            <el-icon><delete /></el-icon>
-          </el-button>
+        <div class="pc-actions" @click.stop>
+          <van-button type="danger" size="small" plain @click="handleDelete(row)"><van-icon name="delete-o" /></van-button>
         </div>
       </div>
-      <el-empty v-if="!loading && products.length === 0" />
+      <van-empty v-if="!loading && products.length === 0" :description="$t('common.noData')" />
     </div>
 
-    <!-- 库存快捷编辑抽屉 -->
-    <el-drawer
-      v-model="stockDrawerVisible"
-      :title="$t('admin.quickStockEdit')"
-      direction="btt"
-      size="auto"
-      :with-header="true"
-    >
-      <div v-if="stockDrawerProduct" class="stock-drawer-content">
+    <van-pagination
+      v-if="filteredAdminProducts.length > pageSize"
+      v-model="currentPage"
+      :total-items="filteredAdminProducts.length"
+      :items-per-page="pageSize"
+      :show-page-size="5"
+      style="padding: 16px 0;"
+    />
+
+    <!-- 库存快捷编辑弹窗 -->
+    <van-popup v-model:show="stockDrawerVisible" position="bottom" round :style="{ minHeight: '50vh' }">
+      <van-nav-bar
+        :title="$t('admin.quickStockEdit')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.save')"
+        @click-left="stockDrawerVisible = false"
+        @click-right="saveStockDrawer"
+      />
+      <div v-if="stockDrawerProduct" style="padding: 16px;">
         <div class="drawer-product-info">
           <span class="drawer-product-name">{{ stockDrawerProduct.name }}</span>
-          <el-tag :type="stockDrawerProduct.is_low_stock ? 'warning' : 'success'" size="small">
+          <van-tag :type="stockDrawerProduct.is_low_stock ? 'warning' : 'success'" size="medium">
             {{ $t('product.stock') }}: {{ stockDrawerProduct.stock }}
-          </el-tag>
+          </van-tag>
         </div>
-        <div class="drawer-form">
-          <div class="drawer-form-item">
-            <label>{{ $t('product.restockPick') }}</label>
-            <div class="delta-input-row">
-              <el-radio-group v-model="stockDrawerForm.deltaMode" size="small">
-                <el-radio-button value="restock">{{ $t('product.restock') }}</el-radio-button>
-                <el-radio-button value="pick">{{ $t('product.pick') }}</el-radio-button>
-              </el-radio-group>
-              <el-input-number v-model="stockDrawerForm.deltaAmount" :min="0" controls-position="right" style="flex: 1;" />
-            </div>
-            <div class="delta-preview">
-              {{ $t('product.currentStock') }}: {{ stockDrawerProduct.stock }}
-              →
+        <van-cell-group inset>
+          <van-cell :title="$t('product.restockPick')">
+            <template #value>
+              <van-radio-group v-model="stockDrawerForm.deltaMode" direction="horizontal">
+                <van-radio name="restock">{{ $t('product.restock') }}</van-radio>
+                <van-radio name="pick">{{ $t('product.pick') }}</van-radio>
+              </van-radio-group>
+            </template>
+          </van-cell>
+          <van-field :label="$t('product.amount')">
+            <template #input>
+              <van-stepper v-model="stockDrawerForm.deltaAmount" :min="0" />
+            </template>
+          </van-field>
+          <van-cell :title="$t('product.currentStock') + ' →'">
+            <template #value>
               <span :class="{ 'stock-warn': previewStock <= (stockDrawerForm.stock_warning || stockDrawerProduct.stock_warning) }">
-                {{ previewStock }}
+                {{ stockDrawerProduct.stock }} → {{ previewStock }}
               </span>
-            </div>
-          </div>
-          <div class="drawer-form-item">
-            <label>{{ $t('product.stockWarning') }}</label>
-            <el-input-number v-model="stockDrawerForm.stock_warning" :min="0" controls-position="right" style="width: 100%;" />
-          </div>
-          <div class="drawer-form-item">
-            <label>{{ $t('product.price') }}</label>
-            <el-input-number v-model="stockDrawerForm.price_usd" :min="0" :step="0.1" :precision="2" controls-position="right" style="width: 100%;" />
-          </div>
+            </template>
+          </van-cell>
+          <van-field v-model.number="stockDrawerForm.stock_warning" type="number" :label="$t('product.stockWarning')" />
+          <van-field v-model.number="stockDrawerForm.price_usd" type="number" :label="$t('product.price')" />
+        </van-cell-group>
+        <div style="padding: 16px 0 0;">
+          <van-button block type="primary" :loading="stockDrawerSaving" @click="saveStockDrawer">{{ $t('common.save') }}</van-button>
         </div>
-        <el-button type="primary" round :loading="stockDrawerSaving" @click="saveStockDrawer" style="width: 100%; margin-top: 16px;">
-          {{ $t('common.save') }}
-        </el-button>
       </div>
-    </el-drawer>
+    </van-popup>
 
     <!-- 快捷补货/取货弹窗 -->
-    <el-dialog
-      v-model="quickDeltaVisible"
-      :title="quickDeltaMode === 'restock' ? $t('product.restock') : $t('product.pick')"
-      :width="mobile ? '92vw' : '320px'"
-      append-to-body
-      destroy-on-close
-    >
-      <div v-if="quickDeltaProduct" class="quick-delta-content">
+    <van-popup v-model:show="quickDeltaVisible" position="bottom" round :style="{ minHeight: '40vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="quickDeltaMode === 'restock' ? $t('product.restock') : $t('product.pick')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.confirm')"
+        @click-left="quickDeltaVisible = false"
+        @click-right="confirmQuickDelta"
+      />
+      <div v-if="quickDeltaProduct" style="padding: 16px;">
         <div class="quick-delta-info">
           <span>{{ quickDeltaProduct.name }}</span>
-          <el-tag :type="quickDeltaProduct.is_low_stock ? 'warning' : 'success'" size="small">
+          <van-tag :type="quickDeltaProduct.is_low_stock ? 'warning' : 'success'" size="medium">
             {{ $t('product.stock') }}: {{ quickDeltaProduct.stock }}
-          </el-tag>
+          </van-tag>
         </div>
-        <div class="quick-delta-input">
-          <span class="delta-label">{{ quickDeltaMode === 'restock' ? '+' : '−' }}</span>
-          <el-input-number v-model="quickDeltaAmount" :min="1" :max="quickDeltaMode === 'pick' ? quickDeltaProduct.stock : 99999" controls-position="right" style="flex: 1;" />
+        <div style="display:flex;align-items:center;gap:12px;margin:16px 0;">
+          <span class="delta-sign">{{ quickDeltaMode === 'restock' ? '+' : '−' }}</span>
+          <van-stepper v-model="quickDeltaAmount" :min="1" :max="quickDeltaMode === 'pick' ? quickDeltaProduct.stock : 99999" style="flex:1" />
         </div>
         <div class="quick-delta-preview">
           {{ quickDeltaProduct.stock }} {{ quickDeltaMode === 'restock' ? '+' : '−' }} {{ quickDeltaAmount }}
           = <b>{{ quickDeltaMode === 'restock' ? quickDeltaProduct.stock + quickDeltaAmount : quickDeltaProduct.stock - quickDeltaAmount }}</b>
         </div>
+        <van-button block type="primary" :loading="quickDeltaSaving" style="margin-top:16px" @click="confirmQuickDelta">{{ $t('common.confirm') }}</van-button>
       </div>
-      <template #footer>
-        <el-button @click="quickDeltaVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="quickDeltaSaving" @click="confirmQuickDelta">{{ $t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    </van-popup>
 
     <!-- 库存预览弹窗 -->
-    <el-dialog
-      v-model="inventoryPreviewVisible"
-      :title="$t('product.inventoryPreview')"
-      :width="mobile ? '94vw' : '600px'"
-      destroy-on-close
-    >
-      <div class="inventory-preview">
-        <div class="inventory-summary">
-          <div class="inv-stat inv-total">
-            <div class="inv-num">{{ products.length }}</div>
-            <div class="inv-label">{{ $t('admin.totalProducts') }}</div>
-          </div>
-          <div class="inv-stat inv-ok">
-            <div class="inv-num">{{ normalStockCount }}</div>
-            <div class="inv-label">{{ $t('product.stockNormal') }}</div>
-          </div>
-          <div class="inv-stat inv-warn">
-            <div class="inv-num">{{ lowStockCount }}</div>
-            <div class="inv-label">{{ $t('product.lowStock') }}</div>
-          </div>
-          <div class="inv-stat inv-danger">
-            <div class="inv-num">{{ outOfStockCount }}</div>
-            <div class="inv-label">{{ $t('product.outOfStock') }}</div>
-          </div>
+    <van-popup v-model:show="inventoryPreviewVisible" position="bottom" round :style="{ height: '75vh', overflowY: 'auto' }">
+      <van-nav-bar :title="$t('product.inventoryPreview')" :left-text="$t('common.cancel')" @click-left="inventoryPreviewVisible = false" />
+      <div style="padding: 12px 16px;">
+        <div class="inv-summary">
+          <div class="inv-stat"><div class="inv-num">{{ products.length }}</div><div class="inv-label">{{ $t('admin.totalProducts') }}</div></div>
+          <div class="inv-stat inv-ok"><div class="inv-num">{{ normalStockCount }}</div><div class="inv-label">{{ $t('product.stockNormal') }}</div></div>
+          <div class="inv-stat inv-warn"><div class="inv-num">{{ lowStockCount }}</div><div class="inv-label">{{ $t('product.lowStock') }}</div></div>
+          <div class="inv-stat inv-danger"><div class="inv-num">{{ outOfStockCount }}</div><div class="inv-label">{{ $t('product.outOfStock') }}</div></div>
         </div>
-        <el-divider />
-        <div class="inv-filter-row">
-          <el-radio-group v-model="invFilter" size="small">
-            <el-radio-button value="all">{{ $t('product.all') }}</el-radio-button>
-            <el-radio-button value="low">{{ $t('product.lowStock') }}</el-radio-button>
-            <el-radio-button value="out">{{ $t('product.outOfStock') }}</el-radio-button>
-          </el-radio-group>
-        </div>
+        <van-tabs v-model:active="invFilter" style="margin: 12px 0;">
+          <van-tab :title="$t('product.all')" name="all" />
+          <van-tab :title="$t('product.lowStock')" name="low" />
+          <van-tab :title="$t('product.outOfStock')" name="out" />
+        </van-tabs>
         <div class="inv-list">
           <div v-for="p in filteredInventory" :key="p.id" class="inv-item">
             <span class="inv-dot" :class="getInvDotClass(p)"></span>
             <span class="inv-name">{{ p.name }}</span>
             <span class="inv-stock" :class="getInvDotClass(p)">{{ p.stock }} / {{ p.stock_warning }}</span>
           </div>
-          <el-empty v-if="filteredInventory.length === 0" :description="$t('common.noData')" />
+          <van-empty v-if="filteredInventory.length === 0" :description="$t('common.noData')" />
         </div>
       </div>
-    </el-dialog>
+    </van-popup>
 
-    <div class="pagination-wrapper">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="filteredAdminProducts.length"
-        :layout="mobile ? 'prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
-        :small="mobile"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
+    <!-- 编辑/添加商品弹窗 -->
+    <van-popup v-model:show="dialogVisible" position="bottom" round :style="{ height: '95vh', overflowY: 'auto' }" destroy-on-close>
+      <van-nav-bar
+        :title="isEdit ? $t('product.editProduct') : $t('product.addProduct')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.confirm')"
+        @click-left="dialogVisible = false"
+        @click-right="handleSubmit"
       />
-    </div>
-
-    <!-- 编辑/添加对话框 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="isEdit ? $t('product.editProduct') : $t('product.addProduct')"
-      :width="mobile ? '100vw' : '860px'"
-      :fullscreen="mobile"
-      destroy-on-close
-      class="product-form-dialog"
-    >
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-
-        <!-- ══ 顶部快捷区：分类 / 标签 / 状态（始终可见） ══ -->
+      <div style="padding-bottom: 20px;">
+        <!-- 顶部快捷区 -->
         <div class="form-top-bar">
-          <el-row :gutter="12" align="middle">
-            <el-col :xs="24" :sm="7">
-              <el-form-item :label="$t('product.category')" style="margin-bottom:0">
-                <el-select v-model="form.category" filterable allow-create default-first-option
-                  :placeholder="$t('product.selectCategory')" style="width:100%">
-                  <el-option v-for="cat in categoryOptions" :key="cat" :label="cat" :value="cat" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="8" :sm="3">
-              <el-form-item :label="$t('productForm.no')" style="margin-bottom:0">
-                <el-input v-model="form.sort_order" inputmode="numeric" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="16" :sm="14">
-              <el-form-item :label="$t('productForm.barcode')" style="margin-bottom:0">
-                <el-input v-model="form.barcode" clearable>
-                  <template #append>
-                    <el-button :icon="Camera" @click="openBarcodeScan" :title="$t('product.scanBarcode')" />
-                  </template>
-                </el-input>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- 状态开关行 -->
+          <van-cell-group inset>
+            <van-field :label="$t('product.category')">
+              <template #input>
+                <input v-model="form.category" :list="`cat-list-${Date.now()}`" :placeholder="$t('product.selectCategory')" style="border:none;outline:none;width:100%;font-size:14px;" />
+                <datalist id="cat-list">
+                  <option v-for="cat in categoryOptions" :key="cat" :value="cat" />
+                </datalist>
+              </template>
+            </van-field>
+            <van-field v-model="form.sort_order" type="number" :label="$t('productForm.no')" />
+            <van-field v-model="form.barcode" :label="$t('productForm.barcode')" clearable>
+              <template #button>
+                <van-button size="small" plain icon="scan" @click="openBarcodeScan">{{ $t('product.scanBarcode') }}</van-button>
+              </template>
+            </van-field>
+          </van-cell-group>
           <div class="form-flag-row">
             <div class="flag-item" :class="{ 'flag-active': form.is_active }">
               <span class="flag-label">{{ $t('product.status') }}</span>
-              <el-switch v-model="form.is_active"
-                :active-text="$t('product.onSale')"
-                :inactive-text="$t('product.offSale')"
-                inline-prompt />
+              <van-switch v-model="form.is_active" size="20" />
             </div>
             <div class="flag-item" :class="{ 'flag-featured': form.is_featured }">
               <span class="flag-label">{{ $t('product.featured') }}</span>
-              <el-switch v-model="form.is_featured" active-color="#f59e0b" />
+              <van-switch v-model="form.is_featured" size="20" active-color="#f59e0b" />
             </div>
             <div class="flag-item" :class="{ 'flag-discount': form.is_discounted }">
               <span class="flag-label">{{ $t('product.discounted') }}</span>
-              <el-switch v-model="form.is_discounted" active-color="#ef4444" />
+              <van-switch v-model="form.is_discounted" size="20" active-color="#ef4444" />
             </div>
           </div>
         </div>
 
-        <el-collapse v-model="openSections" class="form-collapse">
+        <van-collapse v-model="openSections">
+          <!-- ① 基本信息 -->
+          <van-collapse-item :title="$t('productForm.sectionBasic')" name="basic">
+            <van-cell-group>
+              <van-field v-model="form.name" :label="$t('productForm.nameZh')" :placeholder="$t('productForm.nameZh')" required />
+              <van-field v-model="form.name_en" :label="$t('productForm.nameEn')" />
+              <van-field v-model="form.name_kh" :label="$t('productForm.nameKh')" />
+              <van-field v-model="form.unit" :label="$t('productForm.unitLabel')" :placeholder="$t('product.unitPlaceholder')" />
+              <van-field v-model="form.price_usd" type="number" :label="$t('productForm.costUSD')" placeholder="0.00">
+                <template #extra><span style="color:#999;font-size:12px;">USD</span></template>
+              </van-field>
+              <van-field v-model="form.stock" type="number" :label="$t('product.stock')" placeholder="0" />
+              <van-field v-model="form.stock_warning" type="number" :label="$t('product.stockWarning')" placeholder="10" />
+              <van-field v-model="form.description" type="textarea" rows="2" :label="$t('product.description')" />
+            </van-cell-group>
 
-          <!-- ① 基本信息：名称 + 价格 + 库存 + 图片 -->
-          <el-collapse-item name="basic" :title="$t('productForm.sectionBasic')">
-            <!-- 名称行 -->
-            <el-row :gutter="12">
-              <el-col :xs="24" :sm="8">
-                <el-form-item :label="$t('productForm.nameZh')" prop="name">
-                  <el-input v-model="form.name" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="24" :sm="8">
-                <el-form-item :label="$t('productForm.nameEn')">
-                  <el-input v-model="form.name_en" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="24" :sm="8">
-                <el-form-item :label="$t('productForm.nameKh')">
-                  <el-input v-model="form.name_kh" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <!-- 价格 + 库存行 -->
-            <el-row :gutter="12">
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.unitLabel')">
-                  <el-input v-model="form.unit" :placeholder="$t('product.unitPlaceholder')" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.costUSD')" prop="price_usd">
-                  <el-input v-model="form.price_usd" inputmode="decimal" placeholder="0.00">
-                    <template #prefix>$</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="5">
-                <el-form-item :label="$t('product.stock')">
-                  <el-input v-model="form.stock" inputmode="numeric" placeholder="0">
-                    <template #suffix>{{ form.unit || $t('product.unit') }}</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="5">
-                <el-form-item :label="$t('product.stockWarning')">
-                  <el-input v-model="form.stock_warning" inputmode="numeric" placeholder="10">
-                    <template #suffix>{{ form.unit || $t('product.unit') }}</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <!-- 描述 -->
-            <el-form-item :label="$t('product.description')">
-              <el-input v-model="form.description" type="textarea" :rows="2" />
-            </el-form-item>
-            <!-- 图片 -->
-            <div class="image-upload-area" @paste="onPasteImage">
-              <div v-for="idx in 5" :key="idx" class="image-slot">
-                <div v-if="form[`img${idx}`]" class="image-preview">
-                  <el-image :src="form[`img${idx}`]" fit="cover" style="width: 100%; height: 100%;" />
-                  <div class="image-actions">
-                    <el-icon @click="removeImage(idx)"><delete /></el-icon>
+            <!-- 图片上传 -->
+            <div style="padding: 12px 16px 0;">
+              <div style="font-size:13px;color:#909399;margin-bottom:8px;">{{ $t('product.image') }}</div>
+              <div class="image-upload-area" @paste="onPasteImage">
+                <div v-for="idx in 5" :key="idx" class="image-slot">
+                  <div v-if="form[`img${idx}`]" class="image-preview">
+                    <img :src="form[`img${idx}`]" style="width:100%;height:100%;object-fit:cover;" />
+                    <div class="image-actions" @click="removeImage(idx)">
+                      <van-icon name="delete-o" size="22" color="#fff" />
+                    </div>
                   </div>
+                  <div v-else class="upload-placeholder" @click="triggerImageUpload(idx)">
+                    <van-icon name="plus" size="20" color="#999" />
+                    <span>{{ idx }}</span>
+                  </div>
+                  <input :ref="el => { if (el) imageInputRefs[idx] = el }" type="file" accept="image/*" style="display:none" @change="e => handleFileChange(e, idx)" />
                 </div>
-                <el-upload
-                  v-else
-                  class="image-uploader"
-                  :show-file-list="false"
-                  :http-request="(opt) => handleUpload(opt, idx)"
-                  accept=".jpg,.jpeg,.png,.webp,.gif"
-                >
-                  <div class="upload-placeholder">
-                    <el-icon><plus /></el-icon>
-                    <span>{{ $t('product.imageN', { n: idx }) }}</span>
-                  </div>
-                </el-upload>
               </div>
+              <div class="upload-tip">{{ $t('product.uploadTip5') }} | {{ $t('product.pasteTip') }}</div>
             </div>
-            <div class="upload-tip">{{ $t('product.uploadTip5') }} | {{ $t('product.pasteTip') }}</div>
-          </el-collapse-item>
+          </van-collapse-item>
 
           <!-- ② 其他信息 -->
-          <el-collapse-item name="moreinfo" :title="$t('productForm.sectionMoreInfo')">
-            <el-row :gutter="12">
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('productForm.brand')">
-                  <el-input v-model="form.brand" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('productForm.countryOfOrigin')">
-                  <el-input v-model="form.country_of_origin" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('productForm.supplierName')">
-                  <el-input v-model="form.supplier_name" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('productForm.principleCompany')">
-                  <el-input v-model="form.principle_company" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="12">
-              <el-col :xs="24" :sm="10">
-                <el-form-item :label="$t('productForm.packingFormat')">
-                  <el-input v-model="form.packing_format" :placeholder="$t('productForm.packingFormatPlaceholder')" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="10" :sm="5">
-                <el-form-item :label="$t('productForm.unitWeightValue')">
-                  <el-input v-model="form.unit_weight_value" inputmode="decimal" placeholder="0.00">
-                    <template #append>
-                      <el-select v-model="form.unit_weight_unit" style="width:68px">
-                        <el-option label="G" value="G" />
-                        <el-option label="ML" value="ML" />
-                        <el-option label="Pcs" value="Pcs" />
-                      </el-select>
-                    </template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-              <el-col :xs="7" :sm="4">
-                <el-form-item :label="$t('productForm.packSize')">
-                  <el-input v-model="form.pack_size" inputmode="numeric" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="7" :sm="5">
-                <el-form-item :label="$t('productForm.shelfLifeDays')">
-                  <el-input v-model="form.shelf_life_days" inputmode="numeric" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="12">
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('product.productionDate')">
-                  <el-date-picker v-model="form.production_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="12" :sm="6">
-                <el-form-item :label="$t('product.expiryDate')">
-                  <el-date-picker v-model="form.expiry_date" type="date" value-format="YYYY-MM-DD" style="width:100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-collapse-item>
+          <van-collapse-item :title="$t('productForm.sectionMoreInfo')" name="moreinfo">
+            <van-cell-group>
+              <van-field v-model="form.brand" :label="$t('productForm.brand')" />
+              <van-field v-model="form.country_of_origin" :label="$t('productForm.countryOfOrigin')" />
+              <van-field v-model="form.supplier_name" :label="$t('productForm.supplierName')" />
+              <van-field v-model="form.principle_company" :label="$t('productForm.principleCompany')" />
+              <van-field v-model="form.packing_format" :label="$t('productForm.packingFormat')" :placeholder="$t('productForm.packingFormatPlaceholder')" />
+              <van-field :label="$t('productForm.unitWeightValue')">
+                <template #input>
+                  <input v-model="form.unit_weight_value" type="number" placeholder="0.00" style="flex:1;border:none;outline:none;font-size:14px;" />
+                  <select v-model="form.unit_weight_unit" style="border:none;border-left:1px solid #ebedf0;padding:0 8px;background:transparent;font-size:14px;">
+                    <option value="G">G</option>
+                    <option value="ML">ML</option>
+                    <option value="Pcs">Pcs</option>
+                  </select>
+                </template>
+              </van-field>
+              <van-field v-model="form.pack_size" type="number" :label="$t('productForm.packSize')" />
+              <van-field v-model="form.shelf_life_days" type="number" :label="$t('productForm.shelfLifeDays')" />
+              <van-field :label="$t('product.productionDate')">
+                <template #input>
+                  <input type="date" v-model="form.production_date" style="border:none;outline:none;width:100%;font-size:14px;" />
+                </template>
+              </van-field>
+              <van-field :label="$t('product.expiryDate')">
+                <template #input>
+                  <input type="date" v-model="form.expiry_date" style="border:none;outline:none;width:100%;font-size:14px;" />
+                </template>
+              </van-field>
+            </van-cell-group>
+          </van-collapse-item>
 
           <!-- ③ 包装规格 -->
-          <el-collapse-item name="packing" :title="$t('productForm.sectionPacking')">
-            <!-- 单包 -->
-            <div class="dim-group-title">{{ $t('productForm.singlePackTitle') }}</div>
-            <el-row :gutter="12">
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.unitLabel')">
-                  <el-input v-model="form.unit_name" :placeholder="$t('product.unitNamePlaceholder')" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.pricePerPiece')">
-                  <el-input v-model="form.price_per_piece_usd" inputmode="decimal" placeholder="0.00">
-                    <template #prefix>$</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-            </el-row>
+          <van-collapse-item :title="$t('productForm.sectionPacking')" name="packing">
+            <van-cell-group>
+              <div class="dim-group-title">{{ $t('productForm.singlePackTitle') }}</div>
+              <van-field v-model="form.unit_name" :label="$t('productForm.unitLabel')" :placeholder="$t('product.unitNamePlaceholder')" />
+              <van-field v-model="form.price_per_piece_usd" type="number" :label="$t('productForm.pricePerPiece')" placeholder="0.00" />
+              <div class="dim-group-title">{{ $t('productForm.bulkPackTitle') }}</div>
+              <van-field v-model="form.pack_name" :label="$t('productForm.packLabel')" :placeholder="$t('product.packNamePlaceholder')" />
+              <van-field v-model="form.unit_per_inner_pack" type="number" :label="$t('productForm.unitPerInnerPack')" placeholder="0" />
+              <van-field v-model="form.price_per_package_usd" type="number" :label="$t('productForm.pricePerPackage')" placeholder="0.00" />
+              <div class="dim-group-title">{{ $t('productForm.caseTitle') }}</div>
+              <van-field v-model="form.inner_pack_per_case" type="number" :label="$t('productForm.innerPackPerCase')" placeholder="0" />
+              <van-field v-model="form.unit_per_case" type="number" :label="$t('productForm.unitPerCase')" placeholder="0" />
+              <van-field v-model="form.price_per_case_usd" type="number" :label="$t('productForm.pricePerCase')" placeholder="0.00" />
+            </van-cell-group>
+          </van-collapse-item>
 
-            <!-- 大包装 -->
-            <div class="dim-group-title">{{ $t('productForm.bulkPackTitle') }}</div>
-            <el-row :gutter="12">
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.packLabel')">
-                  <el-input v-model="form.pack_name" :placeholder="$t('product.packNamePlaceholder')" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="4">
-                <el-form-item :label="$t('productForm.unitPerInnerPack')">
-                  <el-input v-model="form.unit_per_inner_pack" inputmode="numeric" placeholder="0" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.pricePerPackage')">
-                  <el-input v-model="form.price_per_package_usd" inputmode="decimal" placeholder="0.00">
-                    <template #prefix>$</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-            </el-row>
+          <!-- ④ 尺寸与重量 -->
+          <van-collapse-item :title="$t('productForm.sectionDimensions')" name="dimensions">
+            <van-cell-group>
+              <div class="dim-group-title">{{ $t('productForm.smallestUnit') }}</div>
+              <van-field v-model="form.unit_width_cm" type="number" :label="$t('productForm.widthCm')" />
+              <van-field v-model="form.unit_length_cm" type="number" :label="$t('productForm.lengthCm')" />
+              <van-field v-model="form.unit_height_cm" type="number" :label="$t('productForm.heightCm')" />
+              <van-field v-model="form.unit_weight_kg" type="number" :label="$t('productForm.weightKg')" />
+              <div class="dim-group-title">{{ $t('productForm.middlePack') }}</div>
+              <van-field v-model="form.pack_width_cm" type="number" :label="$t('productForm.widthCm')" />
+              <van-field v-model="form.pack_length_cm" type="number" :label="$t('productForm.lengthCm')" />
+              <van-field v-model="form.pack_height_cm" type="number" :label="$t('productForm.heightCm')" />
+              <van-field v-model="form.pack_weight_kg" type="number" :label="$t('productForm.weightKg')" />
+              <div class="dim-group-title">{{ $t('productForm.outerCase') }}</div>
+              <van-field v-model="form.case_width_cm" type="number" :label="$t('productForm.widthCm')" />
+              <van-field v-model="form.case_length_cm" type="number" :label="$t('productForm.lengthCm')" />
+              <van-field v-model="form.case_height_cm" type="number" :label="$t('productForm.heightCm')" />
+              <van-field v-model="form.case_weight_kg" type="number" :label="$t('productForm.weightKg')" />
+            </van-cell-group>
+          </van-collapse-item>
+        </van-collapse>
 
-            <!-- 外箱 -->
-            <div class="dim-group-title">{{ $t('productForm.caseTitle') }}</div>
-            <el-row :gutter="12">
-              <el-col :xs="8" :sm="4">
-                <el-form-item :label="$t('productForm.innerPackPerCase')">
-                  <el-input v-model="form.inner_pack_per_case" inputmode="numeric" placeholder="0" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="4">
-                <el-form-item :label="$t('productForm.unitPerCase')">
-                  <el-input v-model="form.unit_per_case" inputmode="numeric" placeholder="0" />
-                </el-form-item>
-              </el-col>
-              <el-col :xs="8" :sm="5">
-                <el-form-item :label="$t('productForm.pricePerCase')">
-                  <el-input v-model="form.price_per_case_usd" inputmode="decimal" placeholder="0.00">
-                    <template #prefix>$</template>
-                  </el-input>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </el-collapse-item>
-
-          <!-- ⑤ 商品图片 -->
-          <!-- ④ 尺寸与重量（默认折叠） -->
-          <el-collapse-item name="dimensions" :title="$t('productForm.sectionDimensions')">
-            <div class="dim-group-title">{{ $t('productForm.smallestUnit') }}</div>
-            <el-row :gutter="12">
-              <el-col :span="6"><el-form-item :label="$t('productForm.widthCm')"><el-input v-model="form.unit_width_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.lengthCm')"><el-input v-model="form.unit_length_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.heightCm')"><el-input v-model="form.unit_height_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.weightKg')"><el-input v-model="form.unit_weight_kg" inputmode="decimal" /></el-form-item></el-col>
-            </el-row>
-            <div class="dim-group-title">{{ $t('productForm.middlePack') }}</div>
-            <el-row :gutter="12">
-              <el-col :span="6"><el-form-item :label="$t('productForm.widthCm')"><el-input v-model="form.pack_width_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.lengthCm')"><el-input v-model="form.pack_length_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.heightCm')"><el-input v-model="form.pack_height_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.weightKg')"><el-input v-model="form.pack_weight_kg" inputmode="decimal" /></el-form-item></el-col>
-            </el-row>
-            <div class="dim-group-title">{{ $t('productForm.outerCase') }}</div>
-            <el-row :gutter="12">
-              <el-col :span="6"><el-form-item :label="$t('productForm.widthCm')"><el-input v-model="form.case_width_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.lengthCm')"><el-input v-model="form.case_length_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.heightCm')"><el-input v-model="form.case_height_cm" inputmode="decimal" /></el-form-item></el-col>
-              <el-col :span="6"><el-form-item :label="$t('productForm.weightKg')"><el-input v-model="form.case_weight_kg" inputmode="decimal" /></el-form-item></el-col>
-            </el-row>
-          </el-collapse-item>
-
-        </el-collapse>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">{{ $t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 批量导入对话框 -->
-    <el-dialog v-model="importVisible" :title="$t('product.batchImport')" :width="mobile ? '94vw' : '520px'" :fullscreen="mobile">
-      <div class="import-tips">
-        <p>{{ $t('product.batchImportTip') }}</p>
-        <a :href="templateUrl" download class="template-link">{{ $t('product.downloadTemplate') }}</a>
+        <div style="padding: 16px;">
+          <van-button block type="primary" :loading="submitting" @click="handleSubmit">{{ $t('common.confirm') }}</van-button>
+        </div>
       </div>
-      <el-upload
-        ref="uploadRef"
-        :auto-upload="false"
-        :limit="1"
-        accept=".csv,.xlsx"
-        :on-change="onImportFileChange"
-        :on-remove="() => (importFile = null)"
-      >
-        <el-button type="primary">{{ $t('product.selectFile') }}</el-button>
-      </el-upload>
-      <el-checkbox v-model="importOverwrite" style="margin-top: 12px;">
-        {{ $t('product.overwriteExisting') }}
-      </el-checkbox>
-      <div v-if="importResult" class="import-result">
-        <p>{{ $t('product.imported') }}: {{ importResult.created }} / {{ $t('product.updated') }}: {{ importResult.updated }} / {{ $t('product.skipped') }}: {{ importResult.skipped }}</p>
-        <ul v-if="importResult.errors?.length" class="import-errors">
-          <li v-for="(err, i) in importResult.errors" :key="i">{{ err }}</li>
-        </ul>
-      </div>
-      <template #footer>
-        <el-button @click="importVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="submitImport">
+    </van-popup>
+
+    <!-- 批量导入弹窗 -->
+    <van-popup v-model:show="importVisible" position="bottom" round :style="{ minHeight: '55vh' }">
+      <van-nav-bar
+        :title="$t('product.batchImport')"
+        :left-text="$t('common.cancel')"
+        @click-left="importVisible = false"
+      />
+      <div style="padding: 16px;">
+        <p style="font-size:13px;color:#606266;margin-bottom:12px;">{{ $t('product.batchImportTip') }}</p>
+        <a :href="templateUrl" download style="color:#1989fa;font-size:13px;text-decoration:underline;">{{ $t('product.downloadTemplate') }}</a>
+        <div style="margin-top: 16px; display:flex; align-items:center; gap:12px;">
+          <van-button type="primary" size="small" @click="importInputRef?.click()">{{ $t('product.selectFile') }}</van-button>
+          <span v-if="importFileName" style="font-size:13px;color:#666;">{{ importFileName }}</span>
+        </div>
+        <input ref="importInputRef" type="file" accept=".csv,.xlsx" style="display:none" @change="onImportFileChange" />
+        <van-checkbox v-model="importOverwrite" style="margin-top: 12px;">{{ $t('product.overwriteExisting') }}</van-checkbox>
+        <div v-if="importResult" class="import-result">
+          <p>{{ $t('product.imported') }}: {{ importResult.created }} / {{ $t('product.updated') }}: {{ importResult.updated }} / {{ $t('product.skipped') }}: {{ importResult.skipped }}</p>
+          <ul v-if="importResult.errors?.length" class="import-errors">
+            <li v-for="(err, i) in importResult.errors" :key="i">{{ err }}</li>
+          </ul>
+        </div>
+        <van-button block type="primary" :loading="importing" :disabled="!importFile" style="margin-top:16px" @click="submitImport">
           {{ $t('product.startImport') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 扫码对话框 -->
-    <el-dialog v-model="scanVisible" :title="$t('product.scanBarcode')" :width="mobile ? '94vw' : '480px'" :fullscreen="mobile" @close="stopScan">
-      <div v-if="scanError" class="scan-error">{{ scanError }}</div>
-      <video v-show="!scanError" ref="scanVideoRef" class="scan-video" autoplay muted playsinline></video>
-      <div class="scan-manual">
-        <el-input v-model="manualBarcode" :placeholder="$t('product.enterBarcode')" @keyup.enter="confirmManual">
-          <template #append>
-            <el-button @click="confirmManual">{{ $t('common.confirm') }}</el-button>
-          </template>
-        </el-input>
+        </van-button>
       </div>
-      <template #footer>
-        <el-button @click="scanVisible = false">{{ $t('common.cancel') }}</el-button>
-      </template>
-    </el-dialog>
+    </van-popup>
+
+    <!-- 扫码弹窗 -->
+    <van-popup v-model:show="scanVisible" position="bottom" round :style="{ height: '65vh' }" @close="stopScan">
+      <van-nav-bar
+        :title="$t('product.scanBarcode')"
+        :left-text="$t('common.cancel')"
+        @click-left="scanVisible = false; stopScan()"
+      />
+      <div style="padding: 0 16px 16px;">
+        <div v-if="scanError" class="scan-error">{{ scanError }}</div>
+        <video v-show="!scanError" ref="scanVideoRef" class="scan-video" autoplay muted playsinline></video>
+        <div style="margin-top: 12px;">
+          <van-field v-model="manualBarcode" :placeholder="$t('product.enterBarcode')" clearable>
+            <template #button>
+              <van-button size="small" type="primary" @click="confirmManual">{{ $t('common.confirm') }}</van-button>
+            </template>
+          </van-field>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, Delete, Goods, Upload, Camera, Search } from '@element-plus/icons-vue'
-import { Document } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus/es/components/message/index'
-import { ElMessageBox } from 'element-plus/es/components/message-box/index'
+import { showSuccessToast, showFailToast, showConfirmDialog } from 'vant'
 import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage, getAllCategories, importProducts, getProductImportTemplateUrl } from '@/api'
 import { formatUSD } from '@/utils/format'
 
@@ -677,32 +395,24 @@ const isExpiringSoon = (d, days = 30) => {
 
 const { t } = useI18n()
 
-// 移动端检测
-const mobile = ref(window.innerWidth < 768)
-const onResize = () => { mobile.value = window.innerWidth < 768 }
-onMounted(() => window.addEventListener('resize', onResize))
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', onResize)
-  stopScan()
-})
-
 const loading = ref(false)
 const products = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
-const formRef = ref()
 const categoryOptions = ref([])
 
-// 批量导入 / 扫码
+// 批量导入
 const importVisible = ref(false)
 const importFile = ref(null)
+const importFileName = ref('')
 const importOverwrite = ref(false)
 const importing = ref(false)
 const importResult = ref(null)
-const uploadRef = ref()
+const importInputRef = ref()
 const templateUrl = getProductImportTemplateUrl()
 
+// 扫码
 const scanVisible = ref(false)
 const scanError = ref('')
 const scanVideoRef = ref()
@@ -711,8 +421,31 @@ let scanStream = null
 let scanDetector = null
 let scanRAF = 0
 
-const onImportFileChange = (file) => {
-  importFile.value = file?.raw || null
+// 图片上传 refs
+const imageInputRefs = {}
+
+const triggerImageUpload = (idx) => {
+  if (imageInputRefs[idx]) imageInputRefs[idx].click()
+}
+
+const handleFileChange = async (event, idx) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  try {
+    const res = await uploadImage(file)
+    form[`img${idx}`] = res.url
+    if (idx === 1) form.image_url = res.url
+    showSuccessToast(`${t('product.image')}${idx} ✓`)
+  } catch {
+    showFailToast(t('product.uploadFailed'))
+  }
+  event.target.value = ''
+}
+
+const onImportFileChange = (event) => {
+  const file = event.target.files?.[0]
+  importFile.value = file || null
+  importFileName.value = file?.name || ''
   importResult.value = null
 }
 
@@ -725,7 +458,7 @@ const submitImport = async () => {
     fd.append('file', importFile.value)
     const data = await importProducts(fd)
     importResult.value = data
-    ElMessage.success(t('product.importDone'))
+    showSuccessToast(t('product.importDone'))
     await loadProducts()
   } catch (e) {
     console.error(e)
@@ -738,10 +471,7 @@ const stopScan = () => {
   if (scanRAF) cancelAnimationFrame(scanRAF)
   scanRAF = 0
   scanDetector = null
-  if (scanStream) {
-    scanStream.getTracks().forEach((t) => t.stop())
-    scanStream = null
-  }
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null }
 }
 
 const openBarcodeScan = async () => {
@@ -749,41 +479,27 @@ const openBarcodeScan = async () => {
   manualBarcode.value = ''
   scanVisible.value = true
   await nextTick()
-
-  if (!('BarcodeDetector' in window)) {
-    scanError.value = t('product.scanNotSupported')
-    return
-  }
+  if (!('BarcodeDetector' in window)) { scanError.value = t('product.scanNotSupported'); return }
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' },
-    })
-    if (scanVideoRef.value) {
-      scanVideoRef.value.srcObject = scanStream
-    }
-    scanDetector = new window.BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code'],
-    })
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    if (scanVideoRef.value) scanVideoRef.value.srcObject = scanStream
+    scanDetector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code'] })
     const tick = async () => {
       if (!scanDetector || !scanVideoRef.value) return
       try {
         const codes = await scanDetector.detect(scanVideoRef.value)
         if (codes && codes.length > 0) {
           form.barcode = codes[0].rawValue
-          ElMessage.success(t('product.scanSuccess'))
+          showSuccessToast(t('product.scanSuccess'))
           scanVisible.value = false
           stopScan()
           return
         }
-      } catch {
-        // noop
-      }
+      } catch {}
       scanRAF = requestAnimationFrame(tick)
     }
     scanRAF = requestAnimationFrame(tick)
-  } catch (e) {
-    scanError.value = t('product.scanCameraError')
-  }
+  } catch { scanError.value = t('product.scanCameraError') }
 }
 
 const confirmManual = () => {
@@ -806,9 +522,7 @@ const adminCategories = computed(() => {
 
 const filteredAdminProducts = computed(() => {
   let list = products.value
-  if (adminFilterCat.value) {
-    list = list.filter(p => p.category === adminFilterCat.value)
-  }
+  if (adminFilterCat.value) list = list.filter(p => p.category === adminFilterCat.value)
   if (adminSearchKeyword.value.trim()) {
     const kw = adminSearchKeyword.value.toLowerCase()
     list = list.filter(p =>
@@ -824,64 +538,23 @@ const filteredAdminProducts = computed(() => {
 
 const paginatedProducts = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return filteredAdminProducts.value.slice(start, end)
+  return filteredAdminProducts.value.slice(start, start + pageSize.value)
 })
-
-const handleSizeChange = () => { currentPage.value = 1 }
-const handleCurrentChange = () => { window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
 const form = reactive({
   id: null,
-  // 一、供应商
-  supplier_name: '',
-  // 二、基础信息
-  sort_order: 0,
-  barcode: '',
-  brand: '',
-  category: '',
-  name: '',
-  unit_weight_value: '',
-  unit_weight_unit: 'G',
-  packing_format: '',
-  pack_size: '',
-  price_usd: '',
-  gp_percent: '',
-  shelf_life_days: '',
-  principle_company: '',
-  country_of_origin: '',
-  production_date: null,
-  expiry_date: null,
-  image_url: '',
-  img1: '', img2: '', img3: '', img4: '', img5: '',
-  stock: 0,
-  stock_warning: 10,
-  is_active: true,
-  is_featured: false,
-  is_discounted: false,
-  // 三、多语言名称
-  name_en: '',
-  name_kh: '',
-  description: '',
-  // 四、包装规格层级
-  unit: '',
-  pack_name: '',
-  unit_name: '',
-  inner_pack_per_case: '',
-  unit_per_inner_pack: '',
-  unit_per_case: '',
-  pieces_per_package: '',
-  // 五、成本与价格
-  cost_per_case: '',
-  dc_percent: '',
-  net_cost_per_case: '',
-  net_cost_per_unit: '',
-  price_incl_vat: '',
-  price_excl_vat: '',
-  price_per_piece_usd: '',
-  price_per_package_usd: '',
-  price_per_case_usd: '',
-  // 六、尺寸重量
+  supplier_name: '', sort_order: 0, barcode: '', brand: '', category: '', name: '',
+  unit_weight_value: '', unit_weight_unit: 'G', packing_format: '', pack_size: '',
+  price_usd: '', gp_percent: '', shelf_life_days: '', principle_company: '',
+  country_of_origin: '', production_date: null, expiry_date: null,
+  image_url: '', img1: '', img2: '', img3: '', img4: '', img5: '',
+  stock: 0, stock_warning: 10, is_active: true, is_featured: false, is_discounted: false,
+  name_en: '', name_kh: '', description: '',
+  unit: '', pack_name: '', unit_name: '',
+  inner_pack_per_case: '', unit_per_inner_pack: '', unit_per_case: '', pieces_per_package: '',
+  cost_per_case: '', dc_percent: '', net_cost_per_case: '', net_cost_per_unit: '',
+  price_incl_vat: '', price_excl_vat: '',
+  price_per_piece_usd: '', price_per_package_usd: '', price_per_case_usd: '',
   unit_width_cm: '', unit_length_cm: '', unit_height_cm: '', unit_weight_kg: '',
   pack_width_cm: '', pack_length_cm: '', pack_height_cm: '', pack_weight_kg: '',
   case_width_cm: '', case_length_cm: '', case_height_cm: '', case_weight_kg: '',
@@ -890,46 +563,13 @@ const form = reactive({
 
 const openSections = ref(['basic', 'packing'])
 
-const rules = {
-  name: [{ required: true, message: () => t('product.nameRequired'), trigger: 'blur' }],
-  price_usd: [
-    { required: true, message: () => t('product.priceRequired'), trigger: 'blur' },
-    {
-      validator: (_rule, value, callback) => {
-        const n = parseFloat(value)
-        if (isNaN(n) || n <= 0) callback(new Error(t('product.priceRequired')))
-        else callback()
-      },
-      trigger: 'blur',
-    },
-  ],
-}
+const getImageList = (row) => [row.img1, row.img2, row.img3, row.img4, row.img5].filter(Boolean)
 
-// 获取图片列表用于预览
-const getImageList = (row) => {
-  return [row.img1, row.img2, row.img3, row.img4, row.img5].filter(Boolean)
-}
-
-// 图片上传
-const handleUpload = async (options, idx) => {
-  try {
-    const res = await uploadImage(options.file)
-    form[`img${idx}`] = res.url
-    // 自动同步 img1 到 image_url 作为兼容
-    if (idx === 1) form.image_url = res.url
-    ElMessage.success(`${t('product.image')}${idx} ✓`)
-  } catch (error) {
-    ElMessage.error(t('product.uploadFailed'))
-  }
-}
-
-// 移除图片
 const removeImage = (idx) => {
   form[`img${idx}`] = ''
   if (idx === 1) form.image_url = ''
 }
 
-// 粘贴图片 - 自动填充到第一个空位
 const onPasteImage = async (e) => {
   const items = e.clipboardData?.items
   if (!items) return
@@ -938,35 +578,27 @@ const onPasteImage = async (e) => {
       e.preventDefault()
       const file = item.getAsFile()
       if (!file) return
-      // 找到第一个空的图片槽
       const emptyIdx = [1, 2, 3, 4, 5].find(i => !form[`img${i}`])
-      if (!emptyIdx) {
-        ElMessage.warning(t('product.uploadTip'))
-        return
-      }
-      await handleUpload({ file }, emptyIdx)
+      if (!emptyIdx) { showFailToast(t('product.uploadTip')); return }
+      await handleFileChange({ target: { files: [file], value: '' } }, emptyIdx)
       break
     }
   }
 }
 
-// 加载分类选项
 const loadCategories = async () => {
   try {
     const data = await getAllCategories()
     categoryOptions.value = data.map(c => c.name)
   } catch {
-    // 如果分类API未就绪，从现有产品中提取
-    const cats = [...new Set(products.value.map(p => p.category).filter(Boolean))]
-    categoryOptions.value = cats
+    categoryOptions.value = [...new Set(products.value.map(p => p.category).filter(Boolean))]
   }
 }
 
 const loadProducts = async () => {
   loading.value = true
   try {
-    const data = await getProducts({ is_active: null })
-    products.value = data
+    products.value = await getProducts({ is_active: null })
   } catch (error) {
     console.error('加载商品失败:', error)
   } finally {
@@ -976,32 +608,25 @@ const loadProducts = async () => {
 
 const resetForm = () => {
   Object.assign(form, {
-    id: null,
-    supplier_name: '',
-    sort_order: 0, barcode: '', brand: '', category: '', name: '',
-    unit_weight_value: '', unit_weight_unit: 'G',
-    packing_format: '', pack_size: '',
-    price_usd: '', gp_percent: '',
-    shelf_life_days: '', principle_company: '', country_of_origin: '',
+    id: null, supplier_name: '', sort_order: 0, barcode: '', brand: '', category: '', name: '',
+    unit_weight_value: '', unit_weight_unit: 'G', packing_format: '', pack_size: '',
+    price_usd: '', gp_percent: '', shelf_life_days: '', principle_company: '', country_of_origin: '',
     production_date: null, expiry_date: null,
     image_url: '', img1: '', img2: '', img3: '', img4: '', img5: '',
     stock: 0, stock_warning: 10, is_active: true, is_featured: false, is_discounted: false,
     name_en: '', name_kh: '', description: '',
     unit: '', pack_name: '', unit_name: '',
-    inner_pack_per_case: '', unit_per_inner_pack: '', unit_per_case: '',
-    pieces_per_package: '',
-    cost_per_case: '', dc_percent: '', net_cost_per_case: '',
-    net_cost_per_unit: '', price_incl_vat: '', price_excl_vat: '',
+    inner_pack_per_case: '', unit_per_inner_pack: '', unit_per_case: '', pieces_per_package: '',
+    cost_per_case: '', dc_percent: '', net_cost_per_case: '', net_cost_per_unit: '',
+    price_incl_vat: '', price_excl_vat: '',
     price_per_piece_usd: '', price_per_package_usd: '', price_per_case_usd: '',
     unit_width_cm: '', unit_length_cm: '', unit_height_cm: '', unit_weight_kg: '',
     pack_width_cm: '', pack_length_cm: '', pack_height_cm: '', pack_weight_kg: '',
     case_width_cm: '', case_length_cm: '', case_height_cm: '', case_weight_kg: '',
     specs: '',
   })
-  formRef.value?.clearValidate()
 }
 
-// 自动根据生产日期+保质期天数计算到期日
 watch(
   () => [form.production_date, form.shelf_life_days],
   ([prodDate, days]) => {
@@ -1015,58 +640,34 @@ watch(
 
 const toStr = (v) => (v != null ? String(v) : '')
 
-const handleAdd = () => {
-  resetForm()
-  isEdit.value = false
-  dialogVisible.value = true
-}
+const handleAdd = () => { resetForm(); isEdit.value = false; dialogVisible.value = true }
 
 const handleEdit = (row) => {
   Object.assign(form, {
     ...row,
-    supplier_name: row.supplier_name || '',
-    name: row.name || '',
-    name_en: row.name_en || '',
-    name_kh: row.name_kh || '',
-    brand: row.brand || '',
-    country_of_origin: row.country_of_origin || '',
-    packing_format: row.packing_format || '',
-    principle_company: row.principle_company || '',
-    unit: row.unit || '',
-    unit_name: row.unit_name || '',
-    pack_name: row.pack_name || '',
-    barcode: row.barcode || '',
-    description: row.description || '',
-    specs: row.specs || '',
+    supplier_name: row.supplier_name || '', name: row.name || '',
+    name_en: row.name_en || '', name_kh: row.name_kh || '',
+    brand: row.brand || '', country_of_origin: row.country_of_origin || '',
+    packing_format: row.packing_format || '', principle_company: row.principle_company || '',
+    unit: row.unit || '', unit_name: row.unit_name || '', pack_name: row.pack_name || '',
+    barcode: row.barcode || '', description: row.description || '', specs: row.specs || '',
     unit_weight_unit: row.unit_weight_unit || 'G',
     img1: row.img1 || '', img2: row.img2 || '', img3: row.img3 || '',
     img4: row.img4 || '', img5: row.img5 || '',
     production_date: row.production_date ? row.production_date.substring(0, 10) : null,
     expiry_date: row.expiry_date ? row.expiry_date.substring(0, 10) : null,
     sort_order: row.sort_order || 0,
-    is_active: row.is_active !== false,
-    is_featured: row.is_featured || false,
-    is_discounted: row.is_discounted || false,
-    // numeric string fields
-    price_usd: toStr(row.price_usd),
-    price_per_piece_usd: toStr(row.price_per_piece_usd),
-    price_per_package_usd: toStr(row.price_per_package_usd),
-    price_per_case_usd: toStr(row.price_per_case_usd),
-    // unit_per_inner_pack 与 pieces_per_package 同义，显示层统一用 unit_per_inner_pack
+    is_active: row.is_active !== false, is_featured: row.is_featured || false, is_discounted: row.is_discounted || false,
+    price_usd: toStr(row.price_usd), price_per_piece_usd: toStr(row.price_per_piece_usd),
+    price_per_package_usd: toStr(row.price_per_package_usd), price_per_case_usd: toStr(row.price_per_case_usd),
     unit_per_inner_pack: toStr(row.unit_per_inner_pack || row.pieces_per_package),
     pieces_per_package: toStr(row.unit_per_inner_pack || row.pieces_per_package),
-    unit_weight_value: toStr(row.unit_weight_value),
-    pack_size: toStr(row.pack_size),
-    gp_percent: toStr(row.gp_percent),
-    shelf_life_days: toStr(row.shelf_life_days),
-    inner_pack_per_case: toStr(row.inner_pack_per_case),
-    unit_per_case: toStr(row.unit_per_case),
-    cost_per_case: toStr(row.cost_per_case),
-    dc_percent: toStr(row.dc_percent),
-    net_cost_per_case: toStr(row.net_cost_per_case),
-    net_cost_per_unit: toStr(row.net_cost_per_unit),
-    price_incl_vat: toStr(row.price_incl_vat),
-    price_excl_vat: toStr(row.price_excl_vat),
+    unit_weight_value: toStr(row.unit_weight_value), pack_size: toStr(row.pack_size),
+    gp_percent: toStr(row.gp_percent), shelf_life_days: toStr(row.shelf_life_days),
+    inner_pack_per_case: toStr(row.inner_pack_per_case), unit_per_case: toStr(row.unit_per_case),
+    cost_per_case: toStr(row.cost_per_case), dc_percent: toStr(row.dc_percent),
+    net_cost_per_case: toStr(row.net_cost_per_case), net_cost_per_unit: toStr(row.net_cost_per_unit),
+    price_incl_vat: toStr(row.price_incl_vat), price_excl_vat: toStr(row.price_excl_vat),
     unit_width_cm: toStr(row.unit_width_cm), unit_length_cm: toStr(row.unit_length_cm),
     unit_height_cm: toStr(row.unit_height_cm), unit_weight_kg: toStr(row.unit_weight_kg),
     pack_width_cm: toStr(row.pack_width_cm), pack_length_cm: toStr(row.pack_length_cm),
@@ -1079,92 +680,74 @@ const handleEdit = (row) => {
 }
 
 const handleSubmit = async () => {
-  if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitting.value = true
-    try {
-      const payload = { ...form }
-      delete payload.id
-      // 同步 pieces_per_package = unit_per_inner_pack（两字段含义相同，前者用于前端定价）
-      if (payload.unit_per_inner_pack) {
-        payload.pieces_per_package = payload.unit_per_inner_pack
-      }
-      // 将数字字段从字符串转换为数字
-      const floatFields = [
-        'price_usd', 'price_per_piece_usd', 'price_per_package_usd',
-        'unit_weight_value', 'pack_size', 'gp_percent',
-        'cost_per_case', 'dc_percent', 'net_cost_per_case', 'net_cost_per_unit', 'price_incl_vat', 'price_excl_vat',
-        'unit_width_cm', 'unit_length_cm', 'unit_height_cm', 'unit_weight_kg',
-        'pack_width_cm', 'pack_length_cm', 'pack_height_cm', 'pack_weight_kg',
-        'case_width_cm', 'case_length_cm', 'case_height_cm', 'case_weight_kg',
-      ]
-      const intFields = [
-        'pieces_per_package', 'stock', 'stock_warning', 'sort_order',
-        'shelf_life_days', 'inner_pack_per_case', 'unit_per_inner_pack', 'unit_per_case',
-      ]
-      for (const key of floatFields) {
-        const n = parseFloat(payload[key])
-        payload[key] = isNaN(n) ? null : n
-      }
-      for (const key of intFields) {
-        const n = parseInt(payload[key])
-        payload[key] = isNaN(n) ? null : n
-      }
-      // 清理空字符串为null，避免后端验证问题
-      for (const key of Object.keys(payload)) {
-        if (payload[key] === '') payload[key] = null
-      }
-      if (isEdit.value) {
-        await updateProduct(form.id, payload)
-        ElMessage.success(t('product.productUpdated'))
-      } else {
-        delete payload.is_active  // 创建时由后端默认
-        await createProduct(payload)
-        ElMessage.success(t('product.productAdded'))
-      }
-      dialogVisible.value = false
-      loadProducts()
-    } catch (error) {
-      console.error('提交失败:', error)
-    } finally {
-      submitting.value = false
+  if (!form.name?.trim()) { showFailToast(t('product.nameRequired')); return }
+  const priceVal = parseFloat(form.price_usd)
+  if (isNaN(priceVal) || priceVal <= 0) { showFailToast(t('product.priceRequired')); return }
+  submitting.value = true
+  try {
+    const payload = { ...form }
+    delete payload.id
+    if (payload.unit_per_inner_pack) payload.pieces_per_package = payload.unit_per_inner_pack
+    const floatFields = [
+      'price_usd', 'price_per_piece_usd', 'price_per_package_usd',
+      'unit_weight_value', 'pack_size', 'gp_percent',
+      'cost_per_case', 'dc_percent', 'net_cost_per_case', 'net_cost_per_unit', 'price_incl_vat', 'price_excl_vat',
+      'unit_width_cm', 'unit_length_cm', 'unit_height_cm', 'unit_weight_kg',
+      'pack_width_cm', 'pack_length_cm', 'pack_height_cm', 'pack_weight_kg',
+      'case_width_cm', 'case_length_cm', 'case_height_cm', 'case_weight_kg',
+    ]
+    const intFields = [
+      'pieces_per_package', 'stock', 'stock_warning', 'sort_order',
+      'shelf_life_days', 'inner_pack_per_case', 'unit_per_inner_pack', 'unit_per_case',
+    ]
+    for (const key of floatFields) { const n = parseFloat(payload[key]); payload[key] = isNaN(n) ? null : n }
+    for (const key of intFields) { const n = parseInt(payload[key]); payload[key] = isNaN(n) ? null : n }
+    for (const key of Object.keys(payload)) { if (payload[key] === '') payload[key] = null }
+    if (isEdit.value) {
+      await updateProduct(form.id, payload)
+      showSuccessToast(t('product.productUpdated'))
+    } else {
+      delete payload.is_active
+      await createProduct(payload)
+      showSuccessToast(t('product.productAdded'))
     }
-  })
+    dialogVisible.value = false
+    loadProducts()
+  } catch (error) {
+    console.error('提交失败:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const toggleActive = async (row, val) => {
+  try {
+    await updateProduct(row.id, { is_active: val })
+    row.is_active = val
+    showSuccessToast(val ? t('product.statusOnSale') : t('product.statusOffSale'))
+  } catch { showFailToast(t('common.operationFailed')) }
 }
 
 const toggleFeatured = async (row, val) => {
   try {
     await updateProduct(row.id, { is_featured: val })
     row.is_featured = val
-    ElMessage.success(val ? t('product.featuredOn') : t('product.featuredOff'))
-  } catch (error) {
-    console.error('切换推荐失败:', error)
-  }
+  } catch {}
 }
 
 const toggleDiscounted = async (row, val) => {
   try {
     await updateProduct(row.id, { is_discounted: val })
     row.is_discounted = val
-    ElMessage.success(val ? t('product.discounted') + ' ✓' : t('product.discounted') + ' ✗')
-  } catch (error) {
-    console.error('切换折扣失败:', error)
-  }
+  } catch {}
 }
 
-// ====== 库存快捷操作 ======
+// 库存快捷操作
 const stockDrawerVisible = ref(false)
 const stockDrawerProduct = ref(null)
 const stockDrawerSaving = ref(false)
-const stockDrawerForm = reactive({
-  deltaMode: 'restock',
-  deltaAmount: 0,
-  stock_warning: 10,
-  price_usd: 0,
-})
+const stockDrawerForm = reactive({ deltaMode: 'restock', deltaAmount: 0, stock_warning: 10, price_usd: 0 })
 
-// 计算抽屉中的预览库存
 const previewStock = computed(() => {
   if (!stockDrawerProduct.value) return 0
   const base = stockDrawerProduct.value.stock
@@ -1173,14 +756,12 @@ const previewStock = computed(() => {
     : Math.max(0, base - stockDrawerForm.deltaAmount)
 })
 
-// 快捷补货/取货弹窗
 const quickDeltaVisible = ref(false)
 const quickDeltaProduct = ref(null)
 const quickDeltaMode = ref('restock')
 const quickDeltaAmount = ref(1)
 const quickDeltaSaving = ref(false)
 
-// 库存预览
 const inventoryPreviewVisible = ref(false)
 const invFilter = ref('all')
 
@@ -1200,12 +781,8 @@ const getInvDotClass = (p) => {
   return 'inv-ok'
 }
 
-const showInventoryPreview = () => {
-  invFilter.value = 'all'
-  inventoryPreviewVisible.value = true
-}
+const showInventoryPreview = () => { invFilter.value = 'all'; inventoryPreviewVisible.value = true }
 
-// 打开快捷补货/取货弹窗
 const openQuickDelta = (row, mode) => {
   quickDeltaProduct.value = row
   quickDeltaMode.value = mode
@@ -1213,7 +790,6 @@ const openQuickDelta = (row, mode) => {
   quickDeltaVisible.value = true
 }
 
-// 确认快捷补货/取货
 const confirmQuickDelta = async () => {
   if (!quickDeltaProduct.value) return
   const row = quickDeltaProduct.value
@@ -1224,54 +800,31 @@ const confirmQuickDelta = async () => {
     await updateProduct(row.id, { stock: newStock })
     row.stock = newStock
     row.is_low_stock = newStock <= (row.stock_warning || 0)
-    ElMessage.success(t('product.productUpdated'))
+    showSuccessToast(t('product.productUpdated'))
     quickDeltaVisible.value = false
-  } catch (error) {
-    ElMessage.error(t('common.operationFailed'))
-  } finally {
-    quickDeltaSaving.value = false
-  }
+  } catch { showFailToast(t('common.operationFailed')) }
+  finally { quickDeltaSaving.value = false }
 }
 
-// 商品上架/下架切换
-const toggleActive = async (row, val) => {
-  try {
-    await updateProduct(row.id, { is_active: val })
-    row.is_active = val
-    ElMessage.success(val ? t('product.statusOnSale') : t('product.statusOffSale'))
-  } catch (error) {
-    ElMessage.error(t('common.operationFailed'))
-  }
-}
-
-// 打开库存抽屉
 const openStockDrawer = (row) => {
   stockDrawerProduct.value = row
-  Object.assign(stockDrawerForm, {
-    deltaMode: 'restock',
-    deltaAmount: 0,
-    stock_warning: row.stock_warning,
-    price_usd: row.price_usd,
-  })
+  Object.assign(stockDrawerForm, { deltaMode: 'restock', deltaAmount: 0, stock_warning: row.stock_warning, price_usd: row.price_usd })
   stockDrawerVisible.value = true
 }
 
-// 保存抽屉编辑
 const saveStockDrawer = async () => {
   if (!stockDrawerProduct.value) return
   stockDrawerSaving.value = true
   try {
     const newStock = previewStock.value
     await updateProduct(stockDrawerProduct.value.id, {
-      stock: newStock,
-      stock_warning: stockDrawerForm.stock_warning,
-      price_usd: stockDrawerForm.price_usd,
+      stock: newStock, stock_warning: stockDrawerForm.stock_warning, price_usd: stockDrawerForm.price_usd,
     })
     stockDrawerProduct.value.stock = newStock
     stockDrawerProduct.value.stock_warning = stockDrawerForm.stock_warning
     stockDrawerProduct.value.price_usd = stockDrawerForm.price_usd
     stockDrawerProduct.value.is_low_stock = newStock <= stockDrawerForm.stock_warning
-    ElMessage.success(t('product.productUpdated'))
+    showSuccessToast(t('product.productUpdated'))
     stockDrawerVisible.value = false
     loadProducts()
   } catch (error) {
@@ -1282,237 +835,49 @@ const saveStockDrawer = async () => {
 }
 
 const handleDelete = async (row) => {
-  const result = await ElMessageBox.confirm(
-    t('product.deleteConfirm', { name: row.name }),
-    t('product.deleteTitle'),
-    { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' }
-  ).catch(() => false)
-  if (!result) return
   try {
+    await showConfirmDialog({
+      title: t('product.deleteTitle'),
+      message: t('product.deleteConfirm', { name: row.name }),
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+    })
     await deleteProduct(row.id)
-    ElMessage.success(t('product.productDeleted'))
+    showSuccessToast(t('product.productDeleted'))
     loadProducts()
-  } catch (error) {
-    console.error('删除失败:', error)
-  }
+  } catch {}
 }
 
 onMounted(async () => {
   await loadProducts()
   loadCategories()
 })
+onBeforeUnmount(() => stopScan())
 </script>
 
 <style scoped>
-.products-page {
-  padding: 20px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h2 {
-  margin: 0;
-}
-
-.header-btns {
-  display: flex;
-  gap: 8px;
-}
+.header-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .search-filter-bar {
   display: flex;
-  gap: 10px;
-  align-items: stretch;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.search-filter-bar :deep(.el-input__wrapper),
-.search-filter-bar :deep(.el-select__wrapper) {
-  height: 32px;
-  box-sizing: border-box;
-}
-
-@media (max-width: 767px) {
-  .search-filter-bar {
-    gap: 8px;
-  }
-  .search-filter-bar :deep(.el-input),
-  .search-filter-bar :deep(.el-select) {
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: none !important;
-    width: auto !important;
-  }
-}
-
-.pagination-wrapper {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
-
-.image-upload-area {
-  display: flex;
-  gap: 12px;
-}
-
-.image-slot {
-  width: 100px;
-  height: 100px;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.image-preview {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border: 1px solid #eee;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.image-actions {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
+  gap: 8px;
   align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.4);
-  opacity: 0;
-  transition: opacity 0.2s;
-  cursor: pointer;
-}
-
-.image-preview:hover .image-actions {
-  opacity: 1;
-}
-
-.image-actions .el-icon {
-  color: #fff;
-  font-size: 22px;
-}
-
-.image-uploader {
-  width: 100px;
-  height: 100px;
-}
-
-.image-uploader :deep(.el-upload) {
-  width: 100%;
-  height: 100%;
-  border: 1px dashed #d9d9d9;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.image-uploader :deep(.el-upload:hover) {
-  border-color: #409EFF;
-}
-
-.upload-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  color: #999;
-  font-size: 12px;
-}
-
-.upload-placeholder .el-icon {
-  font-size: 22px;
-}
-
-.upload-tip {
-  font-size: 12px;
-  color: #999;
-  margin-top: 6px;
-}
-
-/* ========== 顶部快捷区 ========== */
-.form-top-bar {
-  background: #f0f4ff;
-  border: 1px solid #d4e0ff;
-  border-radius: 8px;
-  padding: 12px 14px 10px;
   margin-bottom: 12px;
 }
 
-.form-flag-row {
-  display: flex;
-  gap: 12px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-
-.flag-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 6px 12px;
-  transition: all 0.2s;
-  min-width: 130px;
-}
-
-.flag-item.flag-active   { border-color: #67c23a; background: #f0fdf4; }
-.flag-item.flag-featured { border-color: #f59e0b; background: #fffbeb; }
-.flag-item.flag-discount { border-color: #ef4444; background: #fff5f5; }
-
-.flag-label {
-  font-size: 13px;
-  color: #606266;
-  white-space: nowrap;
-}
-
-
-/* ========== 商品表单折叠面板 ========== */
-.form-collapse :deep(.el-collapse-item__header) {
-  font-weight: 600;
-  color: var(--el-color-primary);
-  background: #f5f7fa;
-  padding: 0 12px;
+.filter-select {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid #ebedf0;
   border-radius: 4px;
-  margin-bottom: 2px;
-}
-.form-collapse :deep(.el-collapse-item__content) {
-  padding: 12px 0 0;
-}
-.dim-group-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #555;
-  margin: 8px 0 4px;
-  padding-left: 6px;
-  border-left: 3px solid var(--el-color-primary);
-}
-.product-form-dialog :deep(.el-dialog__body) {
-  max-height: 76vh;
-  overflow-y: auto;
-  padding: 14px 18px;
+  font-size: 14px;
+  background: #fff;
+  color: #323233;
+  flex-shrink: 0;
+  width: 120px;
 }
 
-/* ========== 移动端卡片列表 ========== */
-.mobile-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+.card-list { display: flex; flex-direction: column; gap: 10px; }
 
 .product-card {
   display: flex;
@@ -1522,413 +887,78 @@ onMounted(async () => {
   border-radius: 10px;
   padding: 12px;
   cursor: pointer;
-  transition: box-shadow 0.2s;
-  align-items: center;
-  overflow: hidden;
-}
-
-.product-card:active {
-  background: #f5f7fa;
-}
-
-.card-left {
-  flex-shrink: 0;
-}
-
-.card-img {
-  width: 80px;
-  height: 80px;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.card-img-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
-  color: #c0c4cc;
-}
-
-.card-right {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.card-title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.card-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.card-meta {
-  font-size: 12px;
-  color: #909399;
-}
-
-.card-cat {
-  background: #f0f2f5;
-  padding: 1px 6px;
-  border-radius: 3px;
-}
-
-.card-unit {
-  margin-left: 4px;
-}
-
-.card-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 2px;
-}
-
-.card-price {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1D4ED8;
-}
-
-.card-actions {
-  flex-shrink: 0;
-  display: flex;
   align-items: center;
 }
+.product-card:active { background: #f5f7fa; }
 
-/* 库存快捷控制 */
-.card-stock-control {
-  display: flex;
-  align-items: center;
-  background: #f5f5f5;
-  border-radius: 6px;
-  border: 1px solid #e4e7ed;
-  overflow: hidden;
-}
+.pc-left { flex-shrink: 0; }
+.pc-img { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; }
+.pc-img-empty { display: flex; align-items: center; justify-content: center; background: #f5f7fa; }
+.pc-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pc-title-row { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.pc-name { font-size: 15px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.pc-meta { font-size: 12px; color: #909399; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.pc-cat { background: #f0f2f5; padding: 1px 6px; border-radius: 3px; }
+.pc-expiry { font-size: 12px; }
+.pc-bottom { display: flex; justify-content: space-between; align-items: center; }
+.pc-price { font-size: 15px; font-weight: 700; color: #1D4ED8; }
+.pc-actions { flex-shrink: 0; }
 
-.stock-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: #606266;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
+.stock-control { display: flex; align-items: center; background: #f5f5f5; border-radius: 6px; border: 1px solid #e4e7ed; overflow: hidden; }
+.stock-btn { width: 28px; height: 28px; border: none; background: transparent; color: #606266; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.stock-btn:hover { background: #e8e8e8; }
+.stock-btn:disabled { color: #c0c4cc; cursor: not-allowed; }
+.stock-num { min-width: 34px; text-align: center; font-size: 14px; font-weight: 600; color: #303133; cursor: pointer; padding: 0 4px; }
+.stock-num.stock-warn { color: #E6A23C; }
 
-.stock-btn:hover {
-  background: #e8e8e8;
-}
+.form-top-bar { margin-bottom: 0; }
+.form-flag-row { display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap; }
+.flag-item { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e4e7ed; border-radius: 6px; padding: 6px 12px; flex: 1; min-width: 0; }
+.flag-item.flag-active { border-color: #67c23a; background: #f0fdf4; }
+.flag-item.flag-featured { border-color: #f59e0b; background: #fffbeb; }
+.flag-item.flag-discount { border-color: #ef4444; background: #fff5f5; }
+.flag-label { font-size: 12px; color: #606266; white-space: nowrap; flex: 1; }
 
-.stock-btn:active {
-  background: #d9d9d9;
-}
+.dim-group-title { font-size: 13px; font-weight: 600; color: #555; margin: 8px 16px 0; padding-left: 6px; border-left: 3px solid #1989fa; }
 
-.stock-minus:disabled {
-  color: #c0c4cc;
-  cursor: not-allowed;
-}
+.image-upload-area { display: flex; gap: 10px; flex-wrap: wrap; }
+.image-slot { width: 80px; height: 80px; border-radius: 6px; overflow: hidden; }
+.image-preview { position: relative; width: 100%; height: 100%; border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+.image-actions { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.2s; cursor: pointer; }
+.image-preview:hover .image-actions { opacity: 1; }
+.upload-placeholder { width: 100%; height: 100%; border: 1px dashed #d9d9d9; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #999; font-size: 12px; cursor: pointer; }
+.upload-placeholder:hover { border-color: #1989fa; }
+.upload-tip { font-size: 12px; color: #999; margin-top: 6px; }
 
-.stock-num {
-  min-width: 36px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  cursor: pointer;
-  padding: 0 4px;
-}
+.drawer-product-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.drawer-product-name { font-size: 16px; font-weight: 600; color: #303133; }
 
-.stock-num.stock-warn {
-  color: #E6A23C;
-}
+.quick-delta-info { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+.delta-sign { font-size: 24px; font-weight: 700; color: #1989fa; width: 28px; text-align: center; }
+.quick-delta-preview { text-align: center; font-size: 14px; color: #909399; padding: 8px; background: #f5f7fa; border-radius: 6px; }
 
-/* 库存抽屉 */
-.stock-drawer-content {
-  padding: 0 8px 20px;
-}
-
-.drawer-product-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.drawer-product-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.drawer-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.drawer-form-item label {
-  display: block;
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 6px;
-}
-
-/* ========== 移动端适配 ========== */
-@media (max-width: 767px) {
-  .products-page {
-    padding: 12px;
-  }
-
-  .page-header h2 {
-    font-size: 18px;
-    margin: 0;
-  }
-
-  :deep(.el-dialog) {
-    margin-top: 0 !important;
-    border-radius: 12px 12px 0 0;
-  }
-
-  :deep(.el-dialog__body) {
-    max-height: calc(100dvh - 130px);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  :deep(.el-form-item__label) {
-    font-size: 13px;
-    padding-bottom: 4px;
-  }
-
-  :deep(.el-input-number) {
-    width: 100% !important;
-  }
-
-  :deep(.el-select) {
-    width: 100% !important;
-  }
-
-  .image-upload-area {
-    flex-wrap: wrap;
-  }
-
-  .image-slot {
-    width: 80px;
-    height: 80px;
-  }
-
-  .image-uploader {
-    width: 80px;
-    height: 80px;
-  }
-
-  .pagination-wrapper :deep(.el-pagination) {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-}
-
-/* ========== 补货/取货弹窗 ========== */
-.quick-delta-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.quick-delta-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-}
-
-.quick-delta-input {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.delta-label {
-  font-size: 24px;
-  font-weight: 700;
-  color: #409EFF;
-  width: 28px;
-  text-align: center;
-}
-
-.quick-delta-preview {
-  text-align: center;
-  font-size: 14px;
-  color: #909399;
-  padding: 8px;
-  background: #f5f7fa;
-  border-radius: 6px;
-}
-
-/* ========== 库存抽屉delta输入 ========== */
-.delta-input-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.delta-preview {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #606266;
-  padding: 6px 10px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.delta-preview .stock-warn {
-  color: #E6A23C;
-  font-weight: 700;
-}
-
-/* ========== 库存预览弹窗 ========== */
-.inventory-preview {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.inventory-summary {
-  display: flex;
-  justify-content: space-around;
-  gap: 10px;
-}
-
-.inv-stat {
-  text-align: center;
-  flex: 1;
-  padding: 10px 0;
-}
-
-.inv-num {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.inv-label {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 4px;
-}
-
-.inv-total .inv-num { color: #303133; }
+.inv-summary { display: flex; justify-content: space-around; gap: 10px; margin-bottom: 8px; }
+.inv-stat { text-align: center; flex: 1; padding: 10px 0; }
+.inv-num { font-size: 24px; font-weight: 700; color: #303133; }
+.inv-label { font-size: 12px; color: #909399; margin-top: 4px; }
 .inv-ok .inv-num { color: #67c23a; }
 .inv-warn .inv-num { color: #E6A23C; }
 .inv-danger .inv-num { color: #f56c6c; }
-
-.inv-filter-row {
-  margin: 12px 0;
-}
-
-.inv-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.inv-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: #fafafa;
-}
-
-.inv-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
+.inv-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+.inv-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; background: #fafafa; }
+.inv-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .inv-dot.inv-ok { background: #67c23a; }
 .inv-dot.inv-warn { background: #E6A23C; }
 .inv-dot.inv-danger { background: #f56c6c; }
-
-.inv-name {
-  flex: 1;
-  font-size: 14px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.inv-stock {
-  font-weight: 600;
-  font-size: 13px;
-  flex-shrink: 0;
-}
-
+.inv-name { flex: 1; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-stock { font-weight: 600; font-size: 13px; flex-shrink: 0; }
 .inv-stock.inv-ok { color: #67c23a; }
 .inv-stock.inv-warn { color: #E6A23C; }
 .inv-stock.inv-danger { color: #f56c6c; }
 
-.import-tips {
-  margin-bottom: 12px;
-  font-size: 13px;
-  color: #606266;
-}
-.template-link {
-  color: #409eff;
-  margin-left: 8px;
-  text-decoration: underline;
-}
-.import-result {
-  margin-top: 12px;
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  font-size: 13px;
-}
-.import-errors {
-  margin: 6px 0 0 16px;
-  color: #f56c6c;
-  max-height: 160px;
-  overflow-y: auto;
-}
-.scan-video {
-  width: 100%;
-  max-height: 60vh;
-  background: #000;
-  border-radius: 4px;
-}
-.scan-error {
-  padding: 12px;
-  color: #f56c6c;
-  background: #fef0f0;
-  border-radius: 4px;
-  margin-bottom: 12px;
-}
-.scan-manual {
-  margin-top: 12px;
-}
+.import-result { margin-top: 12px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; font-size: 13px; }
+.import-errors { margin: 6px 0 0 16px; color: #f56c6c; max-height: 160px; overflow-y: auto; }
+
+.scan-video { width: 100%; max-height: 50vh; background: #000; border-radius: 4px; margin-top: 8px; }
+.scan-error { padding: 12px; color: #f56c6c; background: #fef0f0; border-radius: 4px; margin-bottom: 12px; }
 </style>

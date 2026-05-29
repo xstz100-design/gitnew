@@ -130,7 +130,7 @@ type Product struct {
 	ExpiryDate         *time.Time `gorm:"column:expiry_date" json:"expiry_date"`
 
 	// ── 供应商
-	SupplierName    *string `gorm:"size:200;column:supplier_name" json:"supplier_name"`
+	SupplierName     *string `gorm:"size:200;column:supplier_name" json:"supplier_name"`
 	PrincipleCompany *string `gorm:"size:200;column:principle_company" json:"principle_company"`
 
 	// ── 商品基础扩展
@@ -142,10 +142,10 @@ type Product struct {
 	ShelfLifeDays   *int     `gorm:"column:shelf_life_days" json:"shelf_life_days"`
 
 	// ── 包装规格层级
-	InnerPackPerCase  *int     `gorm:"column:inner_pack_per_case" json:"inner_pack_per_case"`
-	UnitPerInnerPack  *int     `gorm:"column:unit_per_inner_pack" json:"unit_per_inner_pack"`
-	UnitPerCase       *int     `gorm:"column:unit_per_case" json:"unit_per_case"`
-	PricePerCaseUSD   *float64 `gorm:"column:price_per_case_usd" json:"price_per_case_usd"`
+	InnerPackPerCase *int     `gorm:"column:inner_pack_per_case" json:"inner_pack_per_case"`
+	UnitPerInnerPack *int     `gorm:"column:unit_per_inner_pack" json:"unit_per_inner_pack"`
+	UnitPerCase      *int     `gorm:"column:unit_per_case" json:"unit_per_case"`
+	PricePerCaseUSD  *float64 `gorm:"column:price_per_case_usd" json:"price_per_case_usd"`
 
 	// ── 成本与价格核算
 	CostPerCase    *float64 `gorm:"column:cost_per_case" json:"cost_per_case"`
@@ -325,6 +325,7 @@ const (
 	LedgerOrderCreate   StockLedgerReason = "order_create"   // 下单扣减
 	LedgerOrderCancel   StockLedgerReason = "order_cancel"   // 取消回补
 	LedgerOrderDelete   StockLedgerReason = "order_delete"   // 删除回补
+	LedgerOrderComplete StockLedgerReason = "order_complete" // 确认完成扣货
 	LedgerManualAdjust  StockLedgerReason = "manual_adjust"  // 手动调库
 	LedgerImport        StockLedgerReason = "import"         // 批量导入设置
 )
@@ -333,11 +334,11 @@ const (
 type StockLedger struct {
 	ID         int64             `gorm:"primarykey;autoIncrement" json:"id"`
 	ProductID  int64             `gorm:"not null;index:ix_sl_product_created" json:"product_id"`
-	OrderID    *int64            `gorm:"index" json:"order_id,omitempty"`      // 关联订单（可空）
-	Delta      int               `gorm:"not null" json:"delta"`                // 正=入库，负=出库
-	StockAfter int               `gorm:"not null" json:"stock_after"`          // 变动后库存快照
+	OrderID    *int64            `gorm:"index" json:"order_id,omitempty"` // 关联订单（可空）
+	Delta      int               `gorm:"not null" json:"delta"`           // 正=入库，负=出库
+	StockAfter int               `gorm:"not null" json:"stock_after"`     // 变动后库存快照
 	Reason     StockLedgerReason `gorm:"size:30;not null" json:"reason"`
-	OperatorID *int64            `json:"operator_id,omitempty"`               // 操作人
+	OperatorID *int64            `json:"operator_id,omitempty"` // 操作人
 	Note       string            `gorm:"size:200;default:''" json:"note"`
 	CreatedAt  time.Time         `gorm:"index:ix_sl_product_created" json:"created_at"`
 }

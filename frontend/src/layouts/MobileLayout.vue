@@ -5,6 +5,11 @@
       :class="{ 'tg-frame-mode': isTgContext }"
       :style="isTgContext ? { paddingTop: tgTopPadding + 'px' } : {}"
     >
+      <!-- 全局顶部 Logo 栏 -->
+      <div class="global-header">
+        <img src="/images/logo-main.png" class="global-logo" alt="logo" />
+      </div>
+
       <!-- 内容区（可滚动） -->
       <div class="mobile-content">
         <router-view v-slot="{ Component }">
@@ -20,89 +25,26 @@
         <van-tabbar-item icon="shopping-cart-o" :badge="cartStore.totalCount || ''">
           {{ $t('nav.cart') }}
         </van-tabbar-item>
-        <van-tabbar-item icon="orders-o" to="/m/orders">{{ $t('nav.orders') }}</van-tabbar-item>
         <van-tabbar-item icon="user-o" to="/m/profile">{{ $t('nav.profile') }}</van-tabbar-item>
       </van-tabbar>
     </div>
 
-    <!-- 强制完善账号弹窗（商户首次登录必须设置手机号+密码） -->
-    <div v-if="needsSetup" class="setup-overlay">
-      <div class="setup-card">
-        <h3 class="setup-title">{{ $t('setup.title') }}</h3>
-        <p class="setup-tip">{{ $t('setup.tip') }}</p>
-        <van-cell-group inset>
-          <van-field
-            v-model="setupForm.phone"
-            :placeholder="$t('setup.phonePlaceholder')"
-            :disabled="setupLoading"
-            clearable
-          />
-          <van-field
-            v-model="setupForm.password"
-            type="password"
-            :placeholder="$t('setup.passwordPlaceholder')"
-            :disabled="setupLoading"
-          />
-          <van-field
-            v-model="setupForm.confirmPassword"
-            type="password"
-            :placeholder="$t('setup.confirmPasswordPlaceholder')"
-            :disabled="setupLoading"
-            @keyup.enter="handleSetup"
-          />
-        </van-cell-group>
-        <p v-if="setupError" class="setup-error">{{ setupError }}</p>
-        <van-button type="primary" block :loading="setupLoading" style="margin-top:16px" @click="handleSetup">
-          {{ $t('common.confirm') }}
-        </van-button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed, reactive, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { showToast } from 'vant'
 import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
 import { hapticFeedback } from '@/utils/device'
-import { useI18n } from 'vue-i18n'
-import { setupCredentials } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const cartStore = useCartStore()
-const { t } = useI18n()
 
 const activeTab = ref(0)
-
-// 商户首次登录 —— 强制设置手机号+密码
-const needsSetup = computed(() => {
-  const u = userStore.userInfo
-  return u?.role === 'merchant' && !u?.phone
-})
-const setupForm = reactive({ phone: '', password: '', confirmPassword: '' })
-const setupLoading = ref(false)
-const setupError = ref('')
-
-const handleSetup = async () => {
-  setupError.value = ''
-  if (!setupForm.phone.trim()) { setupError.value = t('setup.phoneRequired'); return }
-  if (!setupForm.password || setupForm.password.length < 6) { setupError.value = t('setup.passwordMinLength'); return }
-  if (setupForm.password !== setupForm.confirmPassword) { setupError.value = t('setup.passwordMismatch'); return }
-  setupLoading.value = true
-  try {
-    const user = await setupCredentials({ phone: setupForm.phone.trim(), password: setupForm.password })
-    userStore.userInfo = { ...userStore.userInfo, ...user }
-    showToast(t('setup.success'))
-  } catch (e) {
-    setupError.value = e?.response?.data?.detail || t('common.requestFailed')
-  } finally {
-    setupLoading.value = false
-  }
-}
 
 // 只要 window.Telegram.WebApp 对象存在就算 Telegram 环境
 // 不用 initData（可能为空字符串）做判断
@@ -110,7 +52,7 @@ const isTgContext = ref(typeof window !== 'undefined' && !!window.Telegram?.WebA
 
 // Telegram 标题栏/浮动按钮占用的顶部高度
 // 初始值 72px（状态栏~24px + Telegram操作栏~48px），onMounted 后用 API 精确值替换
-const tgTopPadding = ref(isTgContext.value ? 72 : 0)
+const tgTopPadding = ref(isTgContext.value && window.innerWidth < 600 ? 72 : 0)
 
 onMounted(() => {
   const tg = window.Telegram?.WebApp
@@ -126,6 +68,11 @@ onMounted(() => {
   // safeAreaInset.top = 系统状态栏高度
   // 两者相加才是内容需要下移的总量
   const updatePadding = () => {
+    // 桌面端 TG 标题栏在 WebView 外侧，不需要顶部内边距
+    if (window.innerWidth >= 600) {
+      tgTopPadding.value = 0
+      return
+    }
     const content = tg.contentSafeAreaInset?.top ?? 0
     const safe = tg.safeAreaInset?.top ?? 0
     // 若 API 返回 0（旧版 Telegram），保持 72px 兜底值不变
@@ -143,13 +90,12 @@ onMounted(() => {
 watch(() => route.path, (newPath) => {
   if (newPath.includes('/m/shop')) activeTab.value = 0
   else if (newPath.includes('/m/cart')) activeTab.value = 1
-  else if (newPath.includes('/m/orders')) activeTab.value = 2
-  else if (newPath.includes('/m/profile')) activeTab.value = 3
+  else if (newPath.includes('/m/profile')) activeTab.value = 2
 }, { immediate: true })
 
 const handleTabChange = (index) => {
   hapticFeedback('light')
-  const routes = ['/m/shop', '/m/cart', '/m/orders', '/m/profile']
+  const routes = ['/m/shop', '/m/cart', '/m/profile']
   router.push(routes[index])
 }
 </script>
@@ -177,6 +123,27 @@ const handleTabChange = (index) => {
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+  /* 为 position:fixed 子元素建立包含块，防止它们在桌面端逃出 520px 框架 */
+  transform: translateZ(0);
+}
+
+/* ── 全局顶部 Logo 栏 ── */
+.global-header {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  height: 56px;
+  z-index: 10;
+}
+
+.global-logo {
+  height: 40px;
+  max-width: 200px;
+  object-fit: contain;
 }
 
 /* ── 内容滚动区 ── */
@@ -237,60 +204,23 @@ const handleTabChange = (index) => {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* ── 底部导航栏（深色渐变，与 Shop 头部一致） ── */
+/* ── 底部导航栏 ── */
 :deep(.van-tabbar) {
   flex-shrink: 0;
   width: 100%;
   position: relative;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
+  background: #fff !important;
+  border-top: 1px solid #f0f0f0;
 }
 :deep(.van-tabbar-item) {
-  color: rgba(255,255,255,0.5) !important;
+  color: #aaa !important;
   transition: color 0.2s;
 }
 :deep(.van-tabbar-item--active) {
-  color: #fff !important;
+  color: #1a1a2e !important;
 }
 :deep(.van-tabbar-item__icon) {
   font-size: 20px;
 }
 
-/* ── 强制完善账号遮罩 ── */
-.setup-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.setup-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 28px 20px 20px;
-  width: 100%;
-  max-width: 360px;
-}
-.setup-title {
-  font-size: 17px;
-  font-weight: 600;
-  text-align: center;
-  margin: 0 0 10px;
-  color: #1a1a1a;
-}
-.setup-tip {
-  font-size: 13px;
-  color: #888;
-  text-align: center;
-  margin: 0 0 16px;
-  line-height: 1.6;
-}
-.setup-error {
-  color: #ee0a24;
-  font-size: 13px;
-  text-align: center;
-  margin: 10px 0 0;
-}
 </style>

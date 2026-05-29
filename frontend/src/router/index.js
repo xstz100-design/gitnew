@@ -20,16 +20,16 @@ const router = createRouter({
       component: () => import('@/views/admin/AdminLogin.vue'),
       meta: { requiresAuth: false, adminLoginPage: true },
     },
-    // ── 移动端商户路由 (Vant UI)
+    // ── 移动端商户路由 (Vant UI) — 公开可浏览
     {
       path: '/m',
       component: () => import('@/layouts/MobileLayout.vue'),
-      meta: { requiresAuth: true, roles: ['merchant', 'picker', 'delivery'], mobile: true },
+      meta: { mobile: true },
       children: [
         { path: '', redirect: '/m/shop' },
         { path: 'shop', name: 'MobileShop', component: () => import('@/views/mobile/Shop.vue') },
+        { path: 'product/:id', name: 'ProductDetail', component: () => import('@/views/mobile/ProductDetail.vue') },
         { path: 'cart', name: 'MobileCart', component: () => import('@/views/mobile/Cart.vue') },
-        { path: 'orders', name: 'MobileOrders', component: () => import('@/views/mobile/Orders.vue') },
         { path: 'profile', name: 'MobileProfile', component: () => import('@/views/mobile/Profile.vue') },
       ],
     },
@@ -60,37 +60,20 @@ const router = createRouter({
   ],
 })
 
-// ─── 路由守卫
+// ─── 路由守卫 — 仅保护管理端路由
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   const inTelegram = isTelegramMiniApp()
 
   const isAdminRoute = to.path.startsWith('/admin') && !to.meta.adminLoginPage
-  const isUserRoute = to.path.startsWith('/m') || to.path === '/'
 
-  // ── 未登录
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    if (isAdminRoute) {
-      next('/admin/login')
-      return
-    }
-    // 在 Telegram 内，尝试自动登录
-    if (inTelegram) {
-      try {
-        await userStore.telegramLogin(getInitData())
-        // 登录成功后继续导航
-      } catch (e) {
-        console.error('TG 自动登录失败:', e)
-        next('/login')
-        return
-      }
-    } else {
-      next('/login')
-      return
-    }
+  // ── 未登录访问管理端受保护路由 → 去管理员登录页
+  if (isAdminRoute && to.meta.requiresAuth && !userStore.isLoggedIn) {
+    next('/admin/login')
+    return
   }
 
-  // ── 已登录访问 /login → 去用户端
+  // ── 已登录访问 /login → 去移动端首页
   if (to.path === '/login' && userStore.isLoggedIn) {
     next('/m/shop')
     return
@@ -115,24 +98,6 @@ router.beforeEach(async (to, from, next) => {
     } catch {
       // 登录失败，继续显示登录页
     }
-  }
-
-  // ── 角色不匹配
-  const allowedRoles = to.meta.roles || (to.meta.role ? [to.meta.role] : null)
-  if (allowedRoles && !allowedRoles.includes(userStore.userRole)) {
-    // 管理员在 Telegram miniapp 中可访问 /m/* 移动端路由
-    if (userStore.isAdmin && inTelegram && (to.path.startsWith('/m') || to.path === '/')) {
-      next()
-      return
-    }
-    if (isAdminRoute) {
-      next('/admin/login')
-    } else if (userStore.isAdmin) {
-      next('/admin/dashboard')
-    } else {
-      next('/login')
-    }
-    return
   }
 
   next()

@@ -63,24 +63,6 @@
       </div>
     </template>
 
-    <!-- 完善账号弹窗（Telegram 注册后首次设置手机号+密码） -->
-    <el-dialog v-model="setupVisible" :title="$t('setup.title')" width="400px"
-      :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" center>
-      <p class="setup-tip">{{ $t('setup.tip') }}</p>
-      <el-input v-model="setupForm.phone" :placeholder="$t('setup.phonePlaceholder')"
-        size="large" style="margin-bottom:12px" :disabled="setupLoading" />
-      <el-input v-model="setupForm.password" type="password" :placeholder="$t('setup.passwordPlaceholder')"
-        size="large" show-password style="margin-bottom:12px" :disabled="setupLoading" />
-      <el-input v-model="setupForm.confirmPassword" type="password" :placeholder="$t('setup.confirmPasswordPlaceholder')"
-        size="large" show-password :disabled="setupLoading" @keyup.enter="handleSetup" />
-      <div v-if="setupError" class="form-error" style="margin-top:8px">{{ setupError }}</div>
-      <template #footer>
-        <el-button type="primary" size="large" style="width:100%" :loading="setupLoading" @click="handleSetup">
-          {{ $t('common.confirm') }}
-        </el-button>
-      </template>
-    </el-dialog>
-
     <!-- 忘记密码弹窗 -->
     <el-dialog v-model="forgotVisible" :title="$t('login.forgotPassword')" width="380px" center>
       <div class="forgot-content">
@@ -126,7 +108,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
-import { changePassword, getPublicAnnouncements, telegramAuth, botLoginCreate, botLoginVerify, login, setupCredentials } from '@/api'
+import { changePassword, getPublicAnnouncements, telegramAuth, botLoginCreate, botLoginVerify, login } from '@/api'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -149,9 +131,7 @@ const isTgContext = typeof window !== 'undefined' && (
 
 // ── 登录后统一检查：是否需要完善资料 ──
 const afterLogin = (user) => {
-  if (user.role === 'merchant' && !user.phone) {
-    setupVisible.value = true
-  } else if (user.must_change_password) {
+  if (user.must_change_password) {
     changePwdVisible.value = true
   } else {
     router.push('/m/shop')
@@ -252,31 +232,6 @@ const handlePwdLogin = async () => {
     pwdError.value = e?.response?.data?.detail || t('common.requestFailed')
   } finally {
     pwdLoading.value = false
-  }
-}
-
-// ── 完善账号（Telegram 注册后设置手机号+密码） ──
-const setupVisible = ref(false)
-const setupForm = reactive({ phone: '', password: '', confirmPassword: '' })
-const setupLoading = ref(false)
-const setupError = ref('')
-
-const handleSetup = async () => {
-  setupError.value = ''
-  if (!setupForm.phone.trim()) { setupError.value = t('setup.phoneRequired'); return }
-  if (!setupForm.password || setupForm.password.length < 6) { setupError.value = t('setup.passwordMinLength'); return }
-  if (setupForm.password !== setupForm.confirmPassword) { setupError.value = t('setup.passwordMismatch'); return }
-  setupLoading.value = true
-  try {
-    const user = await setupCredentials({ phone: setupForm.phone.trim(), password: setupForm.password })
-    userStore.userInfo = user
-    setupVisible.value = false
-    ElMessage.success(t('setup.success'))
-    router.push('/m/shop')
-  } catch (e) {
-    setupError.value = e?.response?.data?.detail || t('common.requestFailed')
-  } finally {
-    setupLoading.value = false
   }
 }
 
@@ -421,9 +376,6 @@ onUnmounted(() => stopPolling())
   text-align: center; font-size: 13px; color: #409eff; cursor: pointer;
   &:hover { text-decoration: underline; }
 }
-
-/* ── 完善账号弹窗 ── */
-.setup-tip { font-size: 13px; color: #666; margin-bottom: 16px; text-align: center; }
 
 /* ── 公共 ── */
 .form-error { color: #f56c6c; font-size: 13px; text-align: center; }

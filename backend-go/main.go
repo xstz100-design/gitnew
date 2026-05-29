@@ -105,8 +105,6 @@ func main() {
 		authPub.POST("/login", handlers.Login)
 		authPub.POST("/telegram-auth", handlers.TelegramAuth)
 		authPub.POST("/telegram-widget-login", handlers.TelegramWidgetLogin)
-		authPub.POST("/telegram-link-login", handlers.TelegramLinkLogin)
-		authPub.POST("/telegram-contact-link", handlers.TelegramContactLink)
 		authPub.POST("/otp/request", handlers.RequestOTP)
 		authPub.POST("/otp/verify", handlers.VerifyOTP)
 		// Bot 深链登录
@@ -119,7 +117,6 @@ func main() {
 	{
 		authAuth.GET("/me", handlers.GetMe)
 		authAuth.PATCH("/me", handlers.UpdateMe)
-		authAuth.POST("/setup-credentials", handlers.SetupCredentials)
 		authAuth.PATCH("/me/telegram", handlers.UpdateMeTelegram)
 		authAuth.POST("/me/telegram/bind-current", handlers.BindCurrentTelegram)
 		authAuth.POST("/change-password", handlers.ChangePassword)
@@ -186,6 +183,7 @@ func main() {
 	ordersAdmin := api.Group("/orders", middleware.Auth(), middleware.RequireAdmin())
 	{
 		ordersAdmin.DELETE("/:id", handlers.DeleteOrder)
+		ordersAdmin.POST("/:id/complete", handlers.CompleteOrder)
 	}
 
 	// ── 分类

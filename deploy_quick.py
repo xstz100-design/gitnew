@@ -130,10 +130,20 @@ def build_and_deploy_backend(cfg, sftp, ssh):
         log(f"⚠️  未在 {local_dir} 找到 go.mod，跳过后端部署")
         return
 
-    # 1. 构建
-    log("🔨 构建后端 (Go)...")
-    binary_name = "wholesale" if sys.platform != "win32" else "wholesale.exe"
-    run_local("go build -o " + binary_name, cwd=str(local_dir))
+    # 1. 构建（交叉编译为 Linux amd64）
+    log("🔨 构建后端 (Go → linux/amd64)...")
+    binary_name = "wholesale_linux"
+    env = os.environ.copy()
+    env["GOOS"] = "linux"
+    env["GOARCH"] = "amd64"
+    result = subprocess.run(
+        f"go build -o {binary_name}",
+        shell=True,
+        cwd=str(local_dir),
+        env=env,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("后端构建失败")
 
     binary_path = local_dir / binary_name
     if not binary_path.exists():
@@ -141,16 +151,19 @@ def build_and_deploy_backend(cfg, sftp, ssh):
         return
     log("✅ 后端构建完成")
 
-    # 2. 上传并重启
+    # 2. 上传并重启（先传到 /tmp，再 sudo 移动）
+    tmp_binary = "/tmp/wholesale"
     remote_binary = f"{remote_dir}/wholesale"
-    log(f"📤 上传后端到 {remote_binary} ...")
-    sftp.put(str(binary_path), remote_binary)
+    log(f"📤 上传后端到 {tmp_binary} ...")
+    sftp.put(str(binary_path), tmp_binary)
     log("✅ 上传完成")
 
     log("🔄 重启后端服务...")
     try:
         ssh_exec(ssh, (
             f"sudo systemctl stop {service} && "
+            f"sudo mkdir -p {remote_dir} && "
+            f"sudo mv {tmp_binary} {remote_binary} && "
             f"sudo chmod +x {remote_binary} && "
             f"sudo systemctl start {service}"
         ))
@@ -235,10 +248,13 @@ def upload_dir_via_sftp(sftp, local_dir, remote_dir):
 def _mkdir_sftp(sftp, path):
     """递归创建远端目录"""
     import posixpath
-    parts = path.rstrip("/").split("/")
-    current = ""
+    path = path.rstrip("/")
+    parts = path.split("/")
+    current = "/" if path.startswith("/") else ""
     for part in parts:
-        current = posixpath.join(current, part) if current else part
+        if not part:
+            continue
+        current = posixpath.join(current, part)
         try:
             sftp.stat(current)
         except FileNotFoundError:

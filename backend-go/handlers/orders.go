@@ -668,6 +668,88 @@ func CancelOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, buildOrderResponse(&order, merchantName))
 }
 
+// ─────────────────── POST /api/orders/:id/complete ───────────────────
+
+// POST /api/orders/:id/complete — 管理员确认订单完成并扣减库存
+func CompleteOrder(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	user := middleware.CurrentUser(c)
+
+	var order models.Order
+	if err := database.DB.Where("id = ? AND is_deleted = ?", id, false).First(&order).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "订单不存在"})
+		return
+	}
+
+	// 只有配送中或已送达的订单可以完成扣货
+	if order.DeliveryStatus != models.DeliveryDelivering && order.DeliveryStatus != models.DeliveryDelivered {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "只有配送中或已送达的订单可以完成扣货"})
+		return
+	}
+
+	// 检查是否已经完成扣货（通过 StockLedger 判断）
+	var existing int64
+	database.DB.Model(&models.StockLedger{}).Where("order_id = ? AND reason = ?", id, models.LedgerOrderComplete).Count(&existing)
+	if existing > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "该订单已经完成扣货"})
+		return
+	}
+
+	var items []models.OrderItem
+	database.DB.Where("order_id = ?", id).Find(&items)
+
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		for _, item := range items {
+			var product models.Product
+			if err := tx.Where("id = ? AND is_deleted = ?", item.ProductID, false).First(&product).Error; err != nil {
+				return fmt.Errorf("商品 %d 不存在或已删除", item.ProductID)
+			}
+
+			// 计算扣减数量
+			deductQty := item.Quantity
+			if item.PurchaseMode == "package" && product.PiecesPerPackage != nil && *product.PiecesPerPackage > 0 {
+				deductQty = item.Quantity * (*product.PiecesPerPackage)
+			} else if item.PurchaseMode == "case" && product.UnitPerCase != nil && *product.UnitPerCase > 0 {
+				deductQty = item.Quantity * (*product.UnitPerCase)
+			}
+
+			if product.Stock < deductQty {
+				return fmt.Errorf("商品「%s」库存不足（当前 %d，需扣 %d）", product.Name, product.Stock, deductQty)
+			}
+
+			if err := tx.Model(&models.Product{}).Where("id = ?", item.ProductID).
+				UpdateColumn("stock", gorm.Expr("stock - ?", deductQty)).Error; err != nil {
+				return err
+			}
+
+			newStock := product.Stock - deductQty
+			writeStockLedger(tx, item.ProductID, -deductQty, newStock,
+				models.LedgerOrderComplete, &id, &user.ID, "")
+		}
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	// 确保 delivery_status 为 delivered
+	now := models.NowCambodia()
+	database.DB.Model(&order).Updates(map[string]interface{}{
+		"delivery_status": models.DeliveryDelivered,
+		"delivered_at":    now,
+		"updated_at":      now,
+	})
+
+	database.DB.Preload("Items.Product").Preload("Merchant").First(&order, id)
+	merchantName := ""
+	if order.Merchant != nil {
+		merchantName = order.Merchant.FullName
+	}
+	c.JSON(http.StatusOK, buildOrderResponse(&order, merchantName))
+}
+
 // ─────────────────── 配货员视图 ───────────────────
 
 // GET /api/orders/picker/items/:orderId

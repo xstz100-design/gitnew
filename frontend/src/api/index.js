@@ -58,16 +58,6 @@ export function register(userData) {
 }
 
 /**
- * 获取待审核用户列表 - 仅管理员
- */
-export function getPendingUsers() {
-  return request({
-    url: '/api/auth/pending-users',
-    method: 'get',
-  })
-}
-
-/**
  * 获取所有注册用户(可按状态筛选) - 仅管理员
  */
 export function getAllRegistrations(status = null) {
@@ -75,30 +65,6 @@ export function getAllRegistrations(status = null) {
     url: '/api/auth/all-registrations',
     method: 'get',
     params: status ? { status } : {},
-  })
-}
-
-/**
- * 审核用户 - 仅管理员
- */
-export function approveUser(userId, approved, rejectedReason = null) {
-  return request({
-    url: `/api/auth/users/${userId}/approve`,
-    method: 'post',
-    data: { 
-      approved, 
-      rejected_reason: rejectedReason 
-    },
-  })
-}
-
-/**
- * 获取待审核用户数量 - 仅管理员
- */
-export function getPendingCount() {
-  return request({
-    url: '/api/auth/pending-count',
-    method: 'get',
   })
 }
 
@@ -132,16 +98,6 @@ export function changePassword(data) {
     url: '/api/auth/change-password',
     method: 'post',
     data,
-  })
-}
-
-/**
- * 重置用户密码 - 仅管理员
- */
-export function resetUserPassword(userId) {
-  return request({
-    url: `/api/auth/users/${userId}/reset-password`,
-    method: 'post',
   })
 }
 
@@ -193,47 +149,6 @@ export function bindCurrentAdminTelegram(initData) {
   })
 }
 
-export function setupCredentials(data) {
-  return request({
-    url: '/api/auth/setup-credentials',
-    method: 'post',
-    data,
-  })
-}
-
-/**
- * Telegram requestContact 一键关联手机号账号
- */
-export function telegramContactLink(initData, contactData) {
-  return request({
-    url: '/api/auth/telegram-contact-link',
-    method: 'post',
-    data: { init_data: initData, contact_data: contactData },
-  })
-}
-
-/**
- * Mini App 中用账号密码关联已有账号
- */
-export function telegramLinkLogin(initData, username, password) {
-  return request({
-    url: '/api/auth/telegram-link-login',
-    method: 'post',
-    data: { init_data: initData, username, password },
-  })
-}
-
-/**
- * 浏览器端：Telegram Login Widget 第三方登录
- */
-export function telegramWidgetLogin(authData) {
-  return request({
-    url: '/api/auth/telegram-widget-login',
-    method: 'post',
-    data: authData,
-    suppressError: true,
-  })
-}
 
 /**
  * Bot 深链登录：创建 token，获取 bot_url
@@ -254,29 +169,6 @@ export function botLoginVerify(token) {
     url: `/api/auth/bot-login/verify?token=${encodeURIComponent(token)}`,
     method: 'get',
     suppressError: true,
-  })
-}
-
-/**
- * 浏览器端：请求 Telegram 验证码
- */
-export function requestLoginOTP(phone) {
-  return request({
-    url: '/api/auth/otp/request',
-    method: 'post',
-    data: { phone },
-    suppressError: true,  // 由 Login.vue 自行处理 bot 引导逻辑
-  })
-}
-
-/**
- * 浏览器端：验证码登录
- */
-export function verifyLoginOTP(phone, code) {
-  return request({
-    url: '/api/auth/otp/verify',
-    method: 'post',
-    data: { phone, code },
   })
 }
 
@@ -359,16 +251,6 @@ export function getOrders(params = {}) {
     url: '/api/orders',
     method: 'get',
     params: cleanParams,
-  })
-}
-
-/**
- * 获取订单详情
- */
-export function getOrder(id) {
-  return request({
-    url: `/api/orders/${id}`,
-    method: 'get',
   })
 }
 
@@ -457,25 +339,7 @@ export function updateOrder(id, data) {
   })
 }
 
-/**
- * 取消订单 - 商户取消
- */
-export function cancelOrder(id) {
-  return request({
-    url: `/api/orders/${id}/cancel`,
-    method: 'post',
-  })
-}
-
 // ============= 批量导入 / 条码 =============
-
-/** 通过条码查询商品 */
-export function getProductByBarcode(barcode) {
-  return request({
-    url: `/api/products/barcode/${encodeURIComponent(barcode)}`,
-    method: 'get',
-  })
-}
 
 /** 下载批量导入模板 URL（直接 a 链接打开） */
 export function getProductImportTemplateUrl() {
@@ -489,15 +353,6 @@ export function importProducts(formData) {
     method: 'post',
     data: formData,
     headers: { 'Content-Type': 'multipart/form-data' },
-  })
-}
-
-/** 查询临近过期商品（管理员） */
-export function listExpiringProducts(days = 30) {
-  return request({
-    url: '/api/products/expiring',
-    method: 'get',
-    params: { days },
   })
 }
 
@@ -540,6 +395,16 @@ export function getPickerItems(orderId) {
 export function markOrderPicked(orderId) {
   return request({
     url: `/api/orders/${orderId}/pick`,
+    method: 'post',
+  })
+}
+
+/**
+ * 确认订单完成并扣减库存（管理员）
+ */
+export function confirmOrderComplete(orderId) {
+  return request({
+    url: `/api/orders/${orderId}/complete`,
     method: 'post',
   })
 }
@@ -670,40 +535,4 @@ export function deleteAnnouncement(id) {
   })
 }
 
-// ============= 月结账单相关 =============
 
-/**
- * 获取月结账单列表
- */
-export function getMonthlyBills(params = {}) {
-  const cleanParams = Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
-  )
-  return request({
-    url: '/api/billing',
-    method: 'get',
-    params: cleanParams,
-  })
-}
-
-/**
- * 生成月结账单
- */
-export function generateMonthlyBills(year, month) {
-  return request({
-    url: '/api/billing/generate',
-    method: 'post',
-    params: { year, month },
-  })
-}
-
-/**
- * 更新月结账单
- */
-export function updateMonthlyBill(id, data) {
-  return request({
-    url: `/api/billing/${id}`,
-    method: 'patch',
-    data,
-  })
-}

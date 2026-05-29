@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd \"e:\\\\Program_ayang\\\\vue\"; $env:PYTHONIOENCODING=\"utf-8\"; python deploy_quick.py 2>&1)",
+      "Read(//c/Users/Administrator/.claude/**)",
+      "Edit(~/.claude/skills/plan-then-edit/**)",
+      "PowerShell(cd \"e:\\\\Program_ayang\\\\vue\"; $env:PYTHONIOENCODING=\"utf-8\"; python deploy_quick.py frontend 2>&1)",
+      "PowerShell(git reset --hard c449970)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Administrator\\.claude\\skills"
+    ]
+  }
+}

@@ -1,168 +1,129 @@
-﻿<template>
-  <div class="profile-page">
-    <h2>{{ $t('admin.myProfile') }}</h2>
-
-    <!-- 个人信息 -->
-    <el-card class="info-card">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('profile.personalInfo') }}</span>
-          <el-button type="primary" link size="small" @click="openEditName">{{ $t('common.edit') }}</el-button>
-        </div>
-      </template>
-      <div class="info-rows">
-        <div class="info-row">
-          <span class="info-label">{{ $t('login.username') }}</span>
-          <span class="info-val">{{ userStore.userInfo?.username }}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">{{ $t('profile.name') }}</span>
-          <span class="info-val">{{ userStore.userInfo?.full_name || $t('profile.notSet') }}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">{{ $t('profile.phone') }}</span>
-          <span class="info-val">{{ userStore.userInfo?.phone || $t('profile.notSet') }}</span>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 账户安全 -->
-    <el-card class="info-card">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('profile.accountSecurity') }}</span>
-        </div>
-      </template>
-      <el-form :label-width="mobile ? '0' : '120px'" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('profile.changePassword')">
-          <el-button type="primary" @click="showPasswordDialog = true">
-            {{ $t('profile.changePassword') }}
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- Telegram 通知设置 -->
-    <el-card class="info-card">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('admin.telegramSettings') }}</span>
-        </div>
-      </template>
-      <el-form :label-width="mobile ? '0' : '120px'" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('admin.telegramId')">
-          <div class="editable-field">
-            <span class="info-value">{{ userStore.userInfo?.telegram_id || $t('profile.notSet') }}</span>
-            <el-button type="primary" link size="small" @click="openEditTelegram">{{ $t('common.edit') }}</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item v-if="telegramMiniAppAvailable" :label="$t('admin.bindCurrentTelegram')">
-          <el-button type="primary" :loading="bindingTelegram" @click="bindCurrentTelegram">
-            {{ userStore.userInfo?.telegram_id ? $t('admin.rebindCurrentTelegram') : $t('admin.bindCurrentTelegram') }}
-          </el-button>
-        </el-form-item>
-        <div class="notify-tip">{{ telegramMiniAppAvailable ? $t('admin.telegramTipMiniApp') : $t('admin.telegramTipManual') }}</div>
-      </el-form>
-    </el-card>
-
-    <!-- 推送通知 -->
-    <el-card class="info-card" v-if="userStore.userInfo?.telegram_id">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('profile.notificationSettings') }}</span>
-        </div>
-      </template>
-      <el-form :label-width="mobile ? '0' : '120px'" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('profile.notifyEnabled')">
-          <el-switch v-model="notifyEnabled" @change="toggleNotify" />
-        </el-form-item>
-        <div class="notify-tip">{{ $t('profile.notifyTip') }}</div>
-      </el-form>
-    </el-card>
-
-    <!-- 帮助与支持 -->
-    <el-card class="info-card">
-      <template #header>
-        <div class="card-header">
-          <span>{{ $t('profile.helpSupport') }}</span>
-        </div>
-      </template>
-      <el-form :label-width="mobile ? '0' : '120px'" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('profile.contactService')">
-          <el-button @click="contactService">{{ contactPhone ? contactPhone : $t('profile.contactHint') }}</el-button>
-        </el-form-item>
-        <el-form-item :label="$t('profile.clearCache')">
-          <el-button type="warning" plain @click="clearCache">{{ $t('profile.clearCache') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 退出登录 -->
-    <div class="logout-section">
-      <el-button type="danger" plain style="width:100%" @click="handleLogout">
-        {{ $t('profile.logout') }}
-      </el-button>
+<template>
+  <div class="page-container">
+    <div class="page-header">
+      <h2>{{ $t('admin.myProfile') }}</h2>
     </div>
 
-    <!-- 修改密码对话框 -->
-    <el-dialog
-      v-model="showPasswordDialog"
-      :title="$t('profile.changePassword')"
-      :width="mobile ? '92vw' : '420px'"
-      destroy-on-close
-    >
-      <el-form label-width="100px" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('profile.oldPassword')">
-          <el-input v-model="passwordForm.old_password" type="password" show-password :placeholder="$t('profile.oldPasswordPlaceholder')" />
-        </el-form-item>
-        <el-form-item :label="$t('profile.newPassword')">
-          <el-input v-model="passwordForm.new_password" type="password" show-password :placeholder="$t('profile.newPasswordPlaceholder')" />
-        </el-form-item>
-        <el-form-item :label="$t('profile.confirmPassword')">
-          <el-input v-model="passwordForm.confirm_password" type="password" show-password :placeholder="$t('profile.confirmPasswordPlaceholder')" @keyup.enter="handleChangePassword" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showPasswordDialog = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="saving" @click="handleChangePassword">{{ $t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <!-- 个人信息 -->
+    <div class="setting-section">
+      <div class="section-title-row">
+        <span class="section-title">{{ $t('profile.personalInfo') }}</span>
+        <van-button type="primary" size="small" plain @click="openEditName">{{ $t('common.edit') }}</van-button>
+      </div>
+      <van-cell-group inset>
+        <van-cell :title="$t('login.username')" :value="userStore.userInfo?.username" />
+        <van-cell :title="$t('profile.name')" :value="userStore.userInfo?.full_name || $t('profile.notSet')" />
+        <van-cell :title="$t('profile.phone')" :value="userStore.userInfo?.phone || $t('profile.notSet')" />
+      </van-cell-group>
+    </div>
 
-    <!-- 编辑姓名 -->
-    <el-dialog
-      v-model="editNameVisible"
-      :title="$t('profile.editPrefix') + $t('profile.name')"
-      :width="mobile ? '92vw' : '360px'"
-      destroy-on-close
-    >
-      <el-form label-width="80px" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('profile.name')">
-          <el-input v-model="editNameVal" :placeholder="$t('profile.inputPrefix') + $t('profile.name')" clearable />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editNameVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="savingProfile" @click="handleSaveName">{{ $t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <!-- 账户安全 -->
+    <div class="setting-section">
+      <div class="section-title">{{ $t('profile.accountSecurity') }}</div>
+      <van-cell-group inset>
+        <van-cell :title="$t('profile.changePassword')" is-link @click="showPasswordDialog = true" />
+      </van-cell-group>
+    </div>
 
-    <!-- 编辑 Telegram ID -->
-    <el-dialog
-      v-model="editTgVisible"
-      :title="$t('admin.telegramId')"
-      :width="mobile ? '92vw' : '360px'"
-      destroy-on-close
-    >
-      <el-form label-width="80px" :label-position="mobile ? 'top' : 'right'">
-        <el-form-item :label="$t('admin.telegramId')">
-          <el-input v-model="editTgVal" placeholder="123456789" clearable />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editTgVisible = false">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="savingTg" @click="handleSaveTelegram">{{ $t('common.confirm') }}</el-button>
-      </template>
-    </el-dialog>
+    <!-- Telegram 通知设置 -->
+    <div class="setting-section">
+      <div class="section-title">{{ $t('admin.telegramSettings') }}</div>
+      <van-cell-group inset>
+        <van-cell :title="$t('admin.telegramId')" :value="userStore.userInfo?.telegram_id || $t('profile.notSet')" is-link @click="openEditTelegram" />
+        <van-cell v-if="telegramMiniAppAvailable">
+          <template #title>
+            <van-button type="primary" size="small" plain :loading="bindingTelegram" @click="bindCurrentTelegram">
+              {{ userStore.userInfo?.telegram_id ? $t('admin.rebindCurrentTelegram') : $t('admin.bindCurrentTelegram') }}
+            </van-button>
+          </template>
+        </van-cell>
+      </van-cell-group>
+      <div class="notify-tip">{{ telegramMiniAppAvailable ? $t('admin.telegramTipMiniApp') : $t('admin.telegramTipManual') }}</div>
+    </div>
+
+    <!-- 推送通知 -->
+    <div v-if="userStore.userInfo?.telegram_id" class="setting-section">
+      <div class="section-title">{{ $t('profile.notificationSettings') }}</div>
+      <van-cell-group inset>
+        <van-cell :title="$t('profile.notifyEnabled')">
+          <template #right-icon>
+            <van-switch v-model="notifyEnabled" size="20" @change="toggleNotify" />
+          </template>
+        </van-cell>
+      </van-cell-group>
+      <div class="notify-tip">{{ $t('profile.notifyTip') }}</div>
+    </div>
+
+    <!-- 帮助与支持 -->
+    <div class="setting-section">
+      <div class="section-title">{{ $t('profile.helpSupport') }}</div>
+      <van-cell-group inset>
+        <van-cell :title="$t('profile.contactService')" is-link @click="contactService">
+          <template #value>
+            <span style="color: #1989fa;">{{ contactPhone || $t('profile.contactHint') }}</span>
+          </template>
+        </van-cell>
+        <van-cell :title="$t('profile.clearCache')" is-link @click="clearCache" />
+      </van-cell-group>
+    </div>
+
+    <!-- 退出登录 -->
+    <div style="padding: 16px 0 40px;">
+      <van-button block type="danger" plain @click="handleLogout">{{ $t('profile.logout') }}</van-button>
+    </div>
+
+    <!-- 修改密码弹窗 -->
+    <van-popup v-model:show="showPasswordDialog" position="bottom" round :style="{ minHeight: '55vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="$t('profile.changePassword')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.confirm')"
+        @click-left="showPasswordDialog = false"
+        @click-right="handleChangePassword"
+      />
+      <van-cell-group inset style="margin-top: 8px;">
+        <van-field v-model="passwordForm.old_password" type="password" :label="$t('profile.oldPassword')" :placeholder="$t('profile.oldPasswordPlaceholder')" />
+        <van-field v-model="passwordForm.new_password" type="password" :label="$t('profile.newPassword')" :placeholder="$t('profile.newPasswordPlaceholder')" />
+        <van-field v-model="passwordForm.confirm_password" type="password" :label="$t('profile.confirmPassword')" :placeholder="$t('profile.confirmPasswordPlaceholder')" />
+      </van-cell-group>
+      <div style="padding: 16px;">
+        <van-button block type="primary" :loading="saving" @click="handleChangePassword">{{ $t('common.confirm') }}</van-button>
+      </div>
+    </van-popup>
+
+    <!-- 编辑姓名弹窗 -->
+    <van-popup v-model:show="editNameVisible" position="bottom" round :style="{ minHeight: '35vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="$t('profile.editPrefix') + $t('profile.name')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.confirm')"
+        @click-left="editNameVisible = false"
+        @click-right="handleSaveName"
+      />
+      <van-cell-group inset style="margin-top: 8px;">
+        <van-field v-model="editNameVal" :label="$t('profile.name')" :placeholder="$t('profile.inputPrefix') + $t('profile.name')" clearable />
+      </van-cell-group>
+      <div style="padding: 16px;">
+        <van-button block type="primary" :loading="savingProfile" @click="handleSaveName">{{ $t('common.confirm') }}</van-button>
+      </div>
+    </van-popup>
+
+    <!-- 编辑 Telegram ID 弹窗 -->
+    <van-popup v-model:show="editTgVisible" position="bottom" round :style="{ minHeight: '35vh' }" destroy-on-close>
+      <van-nav-bar
+        :title="$t('admin.telegramId')"
+        :left-text="$t('common.cancel')"
+        :right-text="$t('common.confirm')"
+        @click-left="editTgVisible = false"
+        @click-right="handleSaveTelegram"
+      />
+      <van-cell-group inset style="margin-top: 8px;">
+        <van-field v-model="editTgVal" :label="$t('admin.telegramId')" placeholder="123456789" clearable />
+      </van-cell-group>
+      <div style="padding: 16px;">
+        <van-button block type="primary" :loading="savingTg" @click="handleSaveTelegram">{{ $t('common.confirm') }}</van-button>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -170,7 +131,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { showSuccessToast, showFailToast, showConfirmDialog } from 'vant'
 import { useUserStore } from '@/stores/user'
 import { changePassword, updateProfile, updateAdminTelegram, bindCurrentAdminTelegram, getContactInfo } from '@/api'
 import { isTelegramMiniApp, getInitData } from '@/utils/telegram'
@@ -179,46 +140,38 @@ const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
 
-const mobile = ref(window.innerWidth < 768)
-const onResize = () => { mobile.value = window.innerWidth < 768 }
+const contactPhone = ref('')
 onMounted(async () => {
-  window.addEventListener('resize', onResize)
   try {
     const info = await getContactInfo()
     contactPhone.value = info.phone || ''
   } catch {}
 })
-onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 
-// 密码修改
 const saving = ref(false)
 const showPasswordDialog = ref(false)
 const passwordForm = reactive({ old_password: '', new_password: '', confirm_password: '' })
 
 const handleChangePassword = async () => {
   if (!passwordForm.old_password || !passwordForm.new_password || !passwordForm.confirm_password) {
-    ElMessage.warning(t('profile.fillRequired'))
-    return
+    showFailToast(t('profile.fillRequired')); return
   }
   if (passwordForm.new_password.length < 6) {
-    ElMessage.warning(t('profile.passwordMinLength'))
-    return
+    showFailToast(t('profile.passwordMinLength')); return
   }
   if (passwordForm.new_password !== passwordForm.confirm_password) {
-    ElMessage.warning(t('profile.passwordMismatch'))
-    return
+    showFailToast(t('profile.passwordMismatch')); return
   }
   saving.value = true
   try {
     await changePassword({ old_password: passwordForm.old_password, new_password: passwordForm.new_password })
-    ElMessage.success(t('profile.passwordChanged'))
+    showSuccessToast(t('profile.passwordChanged'))
     showPasswordDialog.value = false
     Object.assign(passwordForm, { old_password: '', new_password: '', confirm_password: '' })
   } catch {}
   finally { saving.value = false }
 }
 
-// 编辑姓名
 const editNameVisible = ref(false)
 const editNameVal = ref('')
 const savingProfile = ref(false)
@@ -233,13 +186,12 @@ const handleSaveName = async () => {
   try {
     const updated = await updateProfile({ full_name: editNameVal.value.trim() })
     userStore.userInfo = { ...userStore.userInfo, ...updated }
-    ElMessage.success(t('profile.updateSuccess'))
+    showSuccessToast(t('profile.updateSuccess'))
     editNameVisible.value = false
   } catch {}
   finally { savingProfile.value = false }
 }
 
-// Telegram 设置
 const editTgVisible = ref(false)
 const editTgVal = ref('')
 const savingTg = ref(false)
@@ -257,7 +209,7 @@ const handleSaveTelegram = async () => {
   try {
     const updated = await updateAdminTelegram({ telegram_id: editTgVal.value.trim() })
     userStore.userInfo = { ...userStore.userInfo, ...updated }
-    ElMessage.success(t('profile.updateSuccess'))
+    showSuccessToast(t('profile.updateSuccess'))
     editTgVisible.value = false
   } catch {}
   finally { savingTg.value = false }
@@ -265,15 +217,12 @@ const handleSaveTelegram = async () => {
 
 const bindCurrentTelegram = async () => {
   const initData = getInitData()
-  if (!initData) {
-    ElMessage.warning(t('admin.notInTelegram'))
-    return
-  }
+  if (!initData) { showFailToast(t('admin.notInTelegram')); return }
   bindingTelegram.value = true
   try {
     const updated = await bindCurrentAdminTelegram(initData)
     userStore.userInfo = { ...userStore.userInfo, ...updated }
-    ElMessage.success(t('admin.telegramBound'))
+    showSuccessToast(t('admin.telegramBound'))
   } catch {}
   finally { bindingTelegram.value = false }
 }
@@ -282,61 +231,72 @@ const toggleNotify = async (val) => {
   try {
     const updated = await updateProfile({ notify_enabled: val })
     userStore.userInfo = { ...userStore.userInfo, ...updated }
-    ElMessage.success(t('profile.updateSuccess'))
+    showSuccessToast(t('profile.updateSuccess'))
   } catch {
     notifyEnabled.value = !val
-    ElMessage.error(t('profile.updateFailed'))
+    showFailToast(t('profile.updateFailed'))
   }
 }
-
-// 帮助与支持
-const contactPhone = ref('')
 
 const contactService = () => {
   if (contactPhone.value) {
     window.open('tel:' + contactPhone.value)
   } else {
-    ElMessage.info(t('profile.contactHint'))
+    showFailToast(t('profile.contactHint'))
   }
 }
 
 const clearCache = () => {
   localStorage.clear()
   sessionStorage.clear()
-  ElMessage.success(t('profile.cacheCleared'))
+  showSuccessToast(t('profile.cacheCleared'))
 }
 
-// 退出登录
-const handleLogout = () => {
-  ElMessageBox.confirm(t('admin.logoutConfirm'), t('admin.hint'), {
-    confirmButtonText: t('common.confirm'),
-    cancelButtonText: t('common.cancel'),
-    type: 'warning',
-  }).then(() => {
+const handleLogout = async () => {
+  try {
+    await showConfirmDialog({
+      title: t('admin.hint'),
+      message: t('admin.logoutConfirm'),
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+    })
     userStore.logout()
     router.push('/login')
-  }).catch(() => {})
+  } catch {}
 }
 </script>
 
 <style scoped>
-.profile-page { padding: 20px; max-width: 680px; }
-.profile-page h2 { margin-bottom: 20px; }
-.info-card { margin-bottom: 16px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
-.info-rows { display: flex; flex-direction: column; gap: 12px; }
-.info-row { display: flex; align-items: center; gap: 8px; }
-.info-label { width: 90px; color: #6b7280; font-size: 14px; flex-shrink: 0; }
-.info-val { color: #111827; font-size: 14px; }
-.editable-field { display: flex; align-items: center; gap: 8px; }
-.info-value { color: #333; font-size: 14px; }
-.notify-tip { color: #999; font-size: 12px; margin-top: 4px; padding-left: 120px; }
-.logout-section { margin-top: 24px; padding-bottom: 40px; }
+.setting-section {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
 
-@media (max-width: 767px) {
-  .profile-page { padding: 12px; padding-bottom: 70px; max-width: 100%; }
-  .profile-page h2 { font-size: 18px; margin-bottom: 12px; }
-  .info-label { width: 60px; }
-  .notify-tip { padding-left: 0; }
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 12px;
+}
+
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-title-row .section-title {
+  margin-bottom: 0;
+}
+
+.notify-tip {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+  padding: 0 4px;
 }
 </style>

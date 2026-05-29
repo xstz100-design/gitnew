@@ -188,11 +188,27 @@ func NotifyDeliveryOrder(order *models.Order) {
 	if khrRate <= 0 {
 		khrRate = 4000
 	}
-	khr := order.TotalUSD * khrRate
 
 	scheduledDeliveryLine := ""
 	if order.ScheduledAt != nil {
 		scheduledDeliveryLine = fmt.Sprintf("⏰ <b>预约配送 / ពេលដឹក:</b> %s\n", formatScheduledAt(order.ScheduledAt))
+	}
+
+	var paymentSection string
+	if order.DeliveryFeeUSD > 0 {
+		paymentSection = fmt.Sprintf(
+			"💰 <b>货款 / ថ្លៃទំនិញ:</b> $%.2f (≈ %.0fR)\n"+
+				"🚚 <b>派送费 / ថ្លៃដឹក:</b> $%.2f (≈ %.0fR)\n"+
+				"💵 <b>应收合计 / សរុប:</b> <b>$%.2f</b> (≈ %.0fR)\n",
+			order.GoodsTotalUSD, order.GoodsTotalUSD*khrRate,
+			order.DeliveryFeeUSD, order.DeliveryFeeUSD*khrRate,
+			order.TotalUSD, order.TotalUSD*khrRate,
+		)
+	} else {
+		paymentSection = fmt.Sprintf(
+			"💰 <b>货款 / ថ្លៃ:</b> $%.2f (≈ %.0fR)\n",
+			order.TotalUSD, order.TotalUSD*khrRate,
+		)
 	}
 
 	msg := fmt.Sprintf(
@@ -205,7 +221,7 @@ func NotifyDeliveryOrder(order *models.Order) {
 			"━━━━━━━━━━━━━━━\n"+
 			"%s"+
 			"%s"+
-			"💰 <b>货款 / ថ្លៃ:</b> $%.2f (≈ %.0fR)\n"+
+			"%s"+
 			"━━━━━━━━━━━━━━━",
 		order.OrderNo,
 		utils.EscapeHTML(merchantName),
@@ -214,8 +230,7 @@ func NotifyDeliveryOrder(order *models.Order) {
 		mapLine,
 		scheduledDeliveryLine,
 		itemSummary,
-		order.TotalUSD,
-		khr,
+		paymentSection,
 	)
 
 	markup := map[string]interface{}{
@@ -236,21 +251,36 @@ func notifyPaymentRequest(order *models.Order, token, groupChatID string) {
 	if khrRate <= 0 {
 		khrRate = 4000
 	}
-	khr := order.TotalUSD * khrRate
+
+	var amountLines string
+	if order.DeliveryFeeUSD > 0 {
+		amountLines = fmt.Sprintf(
+			"💰 货款 / ថ្លៃទំនិញ: $%.2f (≈ %.0fR)\n"+
+				"🚚 派送费 / ថ្លៃដឹក: $%.2f (≈ %.0fR)\n"+
+				"💵 <b>应收合计 / សរុប: $%.2f</b> (≈ %.0fR)\n",
+			order.GoodsTotalUSD, order.GoodsTotalUSD*khrRate,
+			order.DeliveryFeeUSD, order.DeliveryFeeUSD*khrRate,
+			order.TotalUSD, order.TotalUSD*khrRate,
+		)
+	} else {
+		amountLines = fmt.Sprintf(
+			"💵 <b>金额 / ចំនួនទឹកប្រាក់: $%.2f</b> (≈ %.0fR)\n",
+			order.TotalUSD, order.TotalUSD*khrRate,
+		)
+	}
 
 	msg := fmt.Sprintf(
 		"💰 <b>请确认收款 / សូមបញ្ជាក់ការទូទាត់</b>\n"+
 			"━━━━━━━━━━━━━━━\n"+
 			"📋 订单 / បញ្ជា: #%s\n"+
 			"🏪 商户 / ឈ្មោះ: %s\n"+
-			"💵 金额 / ចំនួនទឹកប្រាក់: <b>$%.2f</b> (≈ %.0fR)\n"+
+			"%s"+
 			"━━━━━━━━━━━━━━━\n"+
 			"请先将收款照片发送到群里，再点击下方按钮完成订单。\n"+
 			"សូមផ្ញើរូបថតការទទួលប្រាក់ទៅក្នុងក្រុម រួចចុចប៊ូតុងខាងក្រោម។",
 		order.OrderNo,
 		utils.EscapeHTML(merchantName),
-		order.TotalUSD,
-		khr,
+		amountLines,
 	)
 	markup := map[string]interface{}{
 		"inline_keyboard": [][]map[string]string{
@@ -487,11 +517,5 @@ func HandlePrivateMessage(db *gorm.DB, tgID int64, text string, firstName string
 		return
 	}
 
-	// 未绑定，发送引导说明
-	siteURL := config.C.SiteURL
-	msg := fmt.Sprintf(
-		"👋 您好！\n\n请联系管理员在 <b>%s</b> 为您创建账号，绑定您的 Telegram 后即可使用一键登录。",
-		siteURL,
-	)
-	go utils.SendTelegramMessage(token, chatIDStr, msg, nil)
+	// 未绑定，不回复
 }

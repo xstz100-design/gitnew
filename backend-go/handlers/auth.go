@@ -222,8 +222,8 @@ type UserCreateResponse struct {
 // buildUserResponse 从 User 模型构建响应 DTO
 func buildUserResponse(u *models.User) UserResponse {
 	profileCompleted := u.FullName != "" &&
+		!strings.HasPrefix(u.FullName, "tg_") &&
 		!strings.HasPrefix(u.FullName, "TG_") &&
-		u.Phone != nil && *u.Phone != "" &&
 		u.Address != nil && *u.Address != ""
 
 	return UserResponse{
@@ -1110,57 +1110,6 @@ func BindCurrentTelegram(c *gin.Context) {
 	BindTelegram(c)
 }
 
-// ─────────────────── 完善账号凭据 ───────────────────
-
-// POST /api/auth/setup-credentials (需登录)
-// Telegram 注册后设置手机号和备用密码，username 同步改为手机号
-func SetupCredentials(c *gin.Context) {
-	user := middleware.CurrentUser(c)
-	var req struct {
-		Phone    string `json:"phone" binding:"required"`
-		Password string `json:"password" binding:"required,min=6"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
-		return
-	}
-
-	phone := strings.TrimSpace(req.Phone)
-	if !phoneRegexp.MatchString(phone) {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "手机号格式不正确"})
-		return
-	}
-
-	// 检查手机号是否已被其他账号使用
-	var existing models.User
-	if database.DB.Where("(username = ? OR phone = ?) AND id != ?", phone, phone, user.ID).First(&existing).Error == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "该手机号已被注册"})
-		return
-	}
-
-	hashed, err := utils.HashPassword(req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "操作失败"})
-		return
-	}
-
-	updates := map[string]interface{}{
-		"phone":           phone,
-		"hashed_password": hashed,
-	}
-	// tg_xxx 账号将 username 一并改为手机号，方便密码登录
-	if strings.HasPrefix(user.Username, "tg_") {
-		updates["username"] = phone
-	}
-
-	if err := database.DB.Model(user).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "保存失败"})
-		return
-	}
-	database.DB.First(user, user.ID)
-	c.JSON(http.StatusOK, buildUserResponse(user))
-}
-
 // ─────────────────── 删除用户（管理员） ───────────────────
 
 // DELETE /api/auth/users/:id
@@ -1181,17 +1130,11 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	// 检查是否有未删除的订单
-	var orderCount int64
-	database.DB.Model(&models.Order{}).Where("merchant_id = ? AND is_deleted = ?", id, false).Count(&orderCount)
-	if orderCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": fmt.Sprintf("该用户还有 %d 笔订单记录，请先在订单管理中处理后再删除", orderCount)})
-		return
-	}
-
-	// 硬删除：清理关联数据后真正删除用户
+	// 硬删除：级联清理所有关联数据后删除用户
 	tx := database.DB.Begin()
-	// 删除已删除的订单（软删除的历史订单）
+	// 删除订单明细
+	tx.Exec("DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE merchant_id = ?)", id)
+	// 删除所有订单
 	tx.Where("merchant_id = ?", id).Delete(&models.Order{})
 	// 删除手机验证记录
 	tx.Where("user_id = ?", id).Delete(&models.PhoneVerification{})
@@ -1396,11 +1339,6 @@ func TelegramWidgetLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{AccessToken: token, TokenType: "bearer", User: buildUserResponse(&user)})
 }
 
-// ─────────────────── Telegram Mini App 关联已有账号 ───────────────────
-
-// POST /api/auth/telegram-link-login
-// 在 Mini App 中输入手机号+密码，将当前 Telegram 账号关联到已有的手机号账号
-// 关联成功后，以后打开 Mini App 直接免密登录
 func TelegramLinkLogin(c *gin.Context) {
 	var req struct {
 		InitData string `json:"init_data" binding:"required"`
@@ -1455,11 +1393,6 @@ func TelegramLinkLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{AccessToken: token, TokenType: "bearer", User: buildUserResponse(&user)})
 }
 
-// ─────────────────── Telegram requestContact 一键手机号关联 ───────────────────
-
-// POST /api/auth/telegram-contact-link
-// Mini App 中调用 Telegram.WebApp.requestContact() 后，将联系人数据发到后端
-// 后端验证 HMAC 签名 + user_id 匹配，自动找到手机号账号并绑定
 func TelegramContactLink(c *gin.Context) {
 	var req struct {
 		InitData    string                 `json:"init_data" binding:"required"`

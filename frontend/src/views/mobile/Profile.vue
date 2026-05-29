@@ -337,7 +337,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onActivated, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showDialog, showImagePreview } from 'vant'
 import { useUserStore } from '@/stores/user'
@@ -349,6 +349,7 @@ import { getInitData, isTelegramMiniApp } from '@/utils/telegram'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const cartStore = useCartStore()
 
@@ -871,15 +872,22 @@ const loadContactAbout = async () => {
   }
 }
 
+const maybeOpenAddressPopup = () => {
+  if (route.query.openAddress) {
+    openAddressPopup()
+    router.replace({ path: route.path })
+  }
+}
+
 onMounted(() => {
   loadContactAbout()
-  // 刷新用户信息，确保审核状态是最新的
   userStore.fetchUserInfo()
+  maybeOpenAddressPopup()
 })
 
-// keep-alive 激活时也刷新用户信息
 onActivated(() => {
   userStore.fetchUserInfo()
+  maybeOpenAddressPopup()
 })
 </script>
 

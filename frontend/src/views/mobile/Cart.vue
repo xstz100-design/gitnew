@@ -16,15 +16,6 @@
     </van-empty>
     
     <template v-else>
-      <div v-if="!userStore.canOrder" class="restriction-panel">
-        <div class="restriction-title">{{ restrictionTitle }}</div>
-        <div class="restriction-desc">{{ restrictionDescription }}</div>
-        <div class="restriction-note">{{ cartSavedTip }}</div>
-        <van-button round block type="warning" class="restriction-btn" @click="goToRestrictionAction">
-          {{ restrictionActionLabel }}
-        </van-button>
-      </div>
-
       <!-- 商铺信息 -->
       <van-cell-group inset>
         <van-cell :title="$t('cart.wholesaleShop')" is-link />
@@ -83,17 +74,10 @@
       
       <!-- 配送信息 -->
       <van-cell-group inset>
-        <van-cell
-          v-if="!userStore.canOrder"
-          :title="cartFormTip"
-          icon="warning-o"
-          class="checkout-disabled-tip"
-        />
         <van-field
           v-model="orderForm.delivery_address"
           :label="$t('cart.address')"
           :placeholder="$t('cart.addressPlaceholder')"
-          :readonly="!formEditable"
           clearable
           @focus="handleInputFocus"
         />
@@ -102,7 +86,6 @@
           :label="$t('cart.phone')"
           type="tel"
           :placeholder="$t('cart.phonePlaceholder')"
-          :readonly="!formEditable"
           clearable
           @focus="handleInputFocus"
         />
@@ -111,7 +94,6 @@
           :label="$t('cart.note')"
           type="textarea"
           :placeholder="$t('cart.notePlaceholder')"
-          :readonly="!formEditable"
           rows="2"
           autosize
           maxlength="200"
@@ -146,8 +128,7 @@
           :placeholder="$t('cart.scheduledAtPlaceholder')"
           readonly
           is-link
-          :disabled="!formEditable"
-          @click="formEditable && (showDatePicker = true)"
+          @click="showDatePicker = true"
         />
       </van-cell-group>
 
@@ -175,7 +156,7 @@
 
       <!-- 支付方式 -->
       <van-cell-group inset>
-        <van-cell :title="$t('cart.paymentMethod')" :is-link="formEditable" @click="openPaymentPicker">
+        <van-cell :title="$t('cart.paymentMethod')" is-link @click="openPaymentPicker">
           <template #value>
             <span :style="{ color: orderForm.payment_status === 'monthly' ? '#1989fa' : '#333' }">
               {{ orderForm.payment_status === 'monthly' ? $t('cart.monthlyPayment') : $t('cart.cashPayment') }}
@@ -196,7 +177,7 @@
       <!-- 底部结算栏 -->
       <van-submit-bar
         :price="totalWithFee * 100"
-        :button-text="primaryButtonText"
+        :button-text="$t('cart.submitOrder')"
         @submit="handlePrimaryAction"
         :loading="submitting"
         :disabled="submitting"
@@ -204,7 +185,7 @@
         <van-checkbox v-model="checkAll">{{ $t('cart.selectAll') }}</van-checkbox>
         <template #tip>
           <span v-if="deliveryFee !== null">{{ $t('cart.itemsAndFee', { count: checkedItems.length, fee: deliveryFee.toFixed(2) }) }}</span>
-          <span v-else>{{ footerTipText }}</span>
+          <span v-else>{{ $t('cart.itemCount', { count: checkedItems.length }) }}</span>
         </template>
       </van-submit-bar>
     </template>
@@ -217,7 +198,6 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showDialog } from 'vant'
 import { useCartStore } from '@/stores/cart'
-import { useUserStore } from '@/stores/user'
 import { createOrder, estimateDeliveryFee, estimateDeliveryFeeByAddress } from '@/api'
 import { formatKHR, usdToKhr } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
@@ -225,7 +205,6 @@ import { hapticFeedback } from '@/utils/device'
 const { t } = useI18n()
 const router = useRouter()
 const cartStore = useCartStore()
-const userStore = useUserStore()
 
 const checkedItems = ref(cartStore.items.map(item => item.id))
 const checkAll = computed({
@@ -288,31 +267,7 @@ const handleDistanceBlur = () => {
   }
 }
 
-// 根据用户保存的 Google 定位自动估算运费
-const autoEstimateFromLocation = async () => {
-  const locationUrl = userStore.userInfo?.location_url
-  if (!locationUrl) return
-  const m = locationUrl.match(/[?&]q=([-\d.]+),([-\d.]+)/)
-  if (!m) return
-  const destination = `${m[1]},${m[2]}`
-  estimatingFee.value = true
-  try {
-    const res = await estimateDeliveryFeeByAddress('', destination)
-    if (res.warning) {
-      // API 无法获取实际距离，不覆盖现有值
-      return
-    }
-    if (res.distance_km !== undefined) distanceInput.value = String(Number(res.distance_km).toFixed(1))
-    deliveryFee.value = res.delivery_fee_usd ?? null
-    autoEstimated.value = true
-  } catch {
-    // 静默失败，用户可手动填写距离
-  } finally {
-    estimatingFee.value = false
-  }
-}
-
-// 根据配送地址文本自动估算（无 location_url 时的兜底）
+// 根据配送地址文本自动估算
 const autoEstimateFromAddress = async (address) => {
   if (!address || address.trim().length < 5) return
   estimatingFee.value = true
@@ -339,88 +294,17 @@ const totalWithFee = computed(() => {
   return base + (deliveryFee.value ?? 0)
 })
 
-const formEditable = computed(() => userStore.canOrder || userStore.orderAccessState === 'incomplete')
-
 const handleInputFocus = (e) => {
   setTimeout(() => {
     if (e?.target) e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, 300)
 }
 
-const restrictionTitle = computed(() => {
-  switch (userStore.orderAccessState) {
-    case 'incomplete':
-      return t('profile.orderGuideIncompleteTitle')
-    case 'pending':
-      return t('profile.orderGuidePendingTitle')
-    case 'rejected':
-      return t('profile.orderGuideRejectedTitle')
-    default:
-      return t('cart.checkoutDisabled')
-  }
-})
-
-const restrictionDescription = computed(() => {
-  if (userStore.orderAccessState === 'rejected' && userStore.userInfo?.rejected_reason) {
-    return `${t('profile.rejectedReason')}：${userStore.userInfo.rejected_reason}。${t('profile.orderGuideRejectedDesc')}`
-  }
-  switch (userStore.orderAccessState) {
-    case 'incomplete':
-      return t('profile.orderGuideIncompleteDesc')
-    case 'pending':
-      return t('profile.orderGuidePendingDesc')
-    case 'rejected':
-      return t('profile.orderGuideRejectedDesc')
-    default:
-      return t('cart.checkoutDisabled')
-  }
-})
-
-const restrictionActionLabel = computed(() => {
-  switch (userStore.orderAccessState) {
-    case 'incomplete':
-      return t('profile.completeProfileAction')
-    case 'pending':
-      return t('profile.viewApprovalStatusAction')
-    case 'rejected':
-      return t('profile.resubmitForReview')
-    default:
-      return t('cart.submitOrder')
-  }
-})
-
-const cartSavedTip = computed(() => {
-  switch (userStore.orderAccessState) {
-    case 'incomplete':
-      return t('cart.draftInfoTip')
-    case 'pending':
-      return t('cart.savedForApprovalTip')
-    case 'rejected':
-      return t('cart.savedForResubmitTip')
-    default:
-      return t('cart.itemCount', { count: checkedItems.value.length })
-  }
-})
-
-const cartFormTip = computed(() => {
-  return formEditable.value ? t('cart.draftInfoTip') : cartSavedTip.value
-})
-
-const primaryButtonText = computed(() => {
-  return userStore.canOrder ? t('cart.submitOrder') : restrictionActionLabel.value
-})
-
-const footerTipText = computed(() => {
-  return userStore.canOrder ? t('cart.itemCount', { count: checkedItems.value.length }) : cartSavedTip.value
-})
-
 const paymentActions = computed(() => {
   const actions = [
     { name: t('cart.cashPayment'), value: 'cash' },
   ]
-  if (userStore.userInfo?.allow_credit) {
-    actions.push({ name: t('cart.monthlyPayment'), value: 'monthly' })
-  }
+  // 月结支付需要后端支持，默认展示现金支付
   return actions
 })
 
@@ -434,10 +318,6 @@ const onPaymentSelect = (action) => {
 }
 
 const openPaymentPicker = () => {
-  if (!formEditable.value) {
-    goToRestrictionAction()
-    return
-  }
   showPaymentPicker.value = true
 }
 
@@ -449,18 +329,9 @@ const orderForm = ref({
   scheduled_at: null,
 })
 
-// 自动填充个人资料中的默认地址和电话，并根据定位自动估算运费
+// 自动根据定位估算运费
 onMounted(() => {
-  if (userStore.userInfo?.address) {
-    orderForm.value.delivery_address = userStore.userInfo.address
-  }
-  if (userStore.userInfo?.phone) {
-    orderForm.value.delivery_phone = userStore.userInfo.phone
-  }
-  // 优先用精确定位，没有则用地址文本
-  if (userStore.userInfo?.location_url) {
-    autoEstimateFromLocation()
-  } else if (orderForm.value.delivery_address) {
+  if (orderForm.value.delivery_address) {
     autoEstimateFromAddress(orderForm.value.delivery_address)
   }
 })
@@ -470,19 +341,8 @@ watch(() => orderForm.value.delivery_address, (newAddr) => {
   if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer)
   if (!newAddr || newAddr.trim().length < 5) return
   estimateDebounceTimer = setTimeout(() => {
-    if (userStore.userInfo?.location_url) {
-      autoEstimateFromLocation()
-    } else {
-      autoEstimateFromAddress(newAddr)
-    }
+    autoEstimateFromAddress(newAddr)
   }, 1500)
-})
-
-// 选中商品的总价
-const totalPrice = computed(() => {
-  return cartStore.items
-    .filter(item => checkedItems.value.includes(item.id))
-    .reduce((sum, item) => sum + item.price_usd * item.quantity, 0)
 })
 
 // 清空购物车
@@ -525,10 +385,6 @@ const removeItem = async (id) => {
 }
 
 // 提交订单
-const goToRestrictionAction = () => {
-  showDialog({ message: restrictionDescription.value })
-  router.push('/m/profile')
-}
 
 const handleBack = () => {
   if (window.history.length > 1) {
@@ -543,18 +399,13 @@ const handleSubmit = async () => {
     return
   }
 
-  if (!userStore.canOrder) {
-    goToRestrictionAction()
-    return
-  }
-
   if (checkedItems.value.length === 0) {
     showDialog({ message: t('cart.selectItems') })
     return
   }
   
-  // 地址校验：表单地址和个人资料默认地址都没有时才拦截
-  const address = orderForm.value.delivery_address?.trim() || userStore.userInfo?.address?.trim()
+  // 地址校验
+  const address = orderForm.value.delivery_address?.trim()
   if (!address) {
     showDialog({ message: t('cart.addressRequired') })
     return
@@ -611,10 +462,6 @@ const handlePrimaryAction = async () => {
   if (submitting.value) {
     return
   }
-  if (!userStore.canOrder) {
-    goToRestrictionAction()
-    return
-  }
   await handleSubmit()
 }
 </script>
@@ -635,32 +482,6 @@ const handlePrimaryAction = async () => {
   height: 22px;
   display: block;
   margin: 0 auto;
-}
-
-.restriction-panel {
-  margin: 10px 12px 0;
-  padding: 14px;
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  border-radius: 12px;
-}
-
-.restriction-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #ad6800;
-}
-
-.restriction-desc,
-.restriction-note {
-  margin-top: 6px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #8c5a00;
-}
-
-.restriction-btn {
-  margin-top: 12px;
 }
 
 .cart-item {

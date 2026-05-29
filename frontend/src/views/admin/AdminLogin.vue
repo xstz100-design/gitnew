@@ -6,39 +6,33 @@
         <div class="admin-login-subtitle">管理员后台</div>
       </div>
 
-      <el-form :model="form" :rules="rules" ref="formRef" class="admin-login-form">
-        <el-form-item prop="username">
-          <el-input
+      <van-form @submit="handleLogin" ref="formRef">
+        <van-cell-group inset>
+          <van-field
             v-model="form.username"
+            name="username"
+            label="账号"
             placeholder="请输入账号"
-            size="large"
-            clearable
-            :prefix-icon="User"
+            left-icon="contact"
+            :rules="[{ required: true, message: '请输入账号' }]"
           />
-        </el-form-item>
-        <el-form-item prop="password">
-          <el-input
+          <van-field
             v-model="form.password"
             type="password"
+            name="password"
+            label="密码"
             placeholder="请输入密码"
-            size="large"
-            show-password
-            :prefix-icon="Lock"
+            left-icon="lock"
+            :rules="[{ required: true, message: '请输入密码' }]"
             @keyup.enter="handleLogin"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            :loading="loading"
-            size="large"
-            style="width: 100%"
-            @click="handleLogin"
-          >
+        </van-cell-group>
+        <div style="margin: 20px 16px 0;">
+          <van-button round block type="primary" native-type="submit" :loading="loading" loading-text="登录中...">
             登 录
-          </el-button>
-        </el-form-item>
-      </el-form>
+          </van-button>
+        </div>
+      </van-form>
 
       <div class="admin-back-link" @click="$router.push('/login')">← 返回用户登录</div>
     </div>
@@ -48,10 +42,8 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus/es/components/message/index'
-import { User, Lock } from '@element-plus/icons-vue'
+import { showSuccessToast, showFailToast } from 'vant'
 import { useUserStore } from '@/stores/user'
-import { changePassword } from '@/api'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -60,40 +52,17 @@ const loading = ref(false)
 
 const form = reactive({ username: '', password: '' })
 
-const rules = {
-  username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-}
-
-// 强制改密
-const changePasswordVisible = ref(false)
-const changingPassword = ref(false)
-const pwdFormRef = ref()
-const pwdForm = reactive({ new_password: '', confirm_password: '' })
-let tempOldPassword = ''
-
 const handleLogin = async () => {
-  if (!formRef.value) return
-  try {
-    await formRef.value.validate()
-  } catch {
-    return
-  }
   loading.value = true
   try {
-    const data = await userStore.login(form.username, form.password)
+    await userStore.login(form.username, form.password)
     await new Promise(resolve => setTimeout(resolve, 100))
     if (!userStore.isAdmin) {
-      ElMessage.error('无权限，仅管理员可登录此后台')
+      showFailToast('无权限，仅管理员可登录此后台')
       userStore.logout()
       return
     }
-    if (data.user?.must_change_password) {
-      tempOldPassword = form.password
-      changePasswordVisible.value = true
-      return
-    }
-    ElMessage.success('登录成功')
+    showSuccessToast('登录成功')
     router.push('/admin/dashboard')
   } catch {
     // 错误由 store 处理
@@ -103,7 +72,7 @@ const handleLogin = async () => {
 }
 </script>
 
-<style scoped lang="scss">
+<style scoped>
 .admin-login-container {
   min-height: 100vh;
   background: linear-gradient(135deg, #1a2a4a 0%, #1d4ed8 60%, #0ea5e9 100%);
@@ -118,13 +87,14 @@ const handleLogin = async () => {
   max-width: 400px;
   background: #fff;
   border-radius: 12px;
-  padding: 40px 36px 32px;
+  padding: 40px 0 32px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
 .admin-logo-area {
   text-align: center;
   margin-bottom: 32px;
+  padding: 0 36px;
 }
 
 .admin-logo-img {
@@ -142,24 +112,6 @@ const handleLogin = async () => {
   letter-spacing: 2px;
 }
 
-.admin-login-form {
-  :deep(.el-form-item) {
-    margin-bottom: 20px;
-    &:last-child { margin-bottom: 0; margin-top: 12px; }
-  }
-  :deep(.el-input__wrapper) {
-    height: 46px;
-    border-radius: 8px;
-  }
-  :deep(.el-button--large) {
-    height: 46px;
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 8px;
-    letter-spacing: 4px;
-  }
-}
-
 .admin-back-link {
   text-align: center;
   margin-top: 20px;
@@ -167,6 +119,9 @@ const handleLogin = async () => {
   color: #94a3b8;
   cursor: pointer;
   transition: color 0.2s;
-  &:hover { color: #1d4ed8; }
+}
+
+.admin-back-link:hover {
+  color: #1d4ed8;
 }
 </style>

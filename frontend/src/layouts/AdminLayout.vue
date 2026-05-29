@@ -1,142 +1,97 @@
 <template>
-  <el-container class="admin-layout" :class="{ 'is-mobile': mobile }">
+  <div class="admin-layout" :class="{ 'is-mobile': mobile }">
     <!-- 桌面端 header -->
-    <el-header v-if="!mobile">
+    <div v-if="!mobile" class="admin-header">
       <div class="header-content">
         <div class="header-left">
           <img src="/images/logo1.svg" alt="Logo" class="header-logo" />
         </div>
         <div class="header-right">
           <button class="lang-btn" @click="toggleLang">{{ langLabel }}</button>
-          <el-dropdown @command="handleCommand">
-            <span class="user-dropdown">
-              {{ userStore.userInfo?.full_name }} ({{ $t('admin.admin') }})
-              <el-icon><arrow-down /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">{{ $t('profile.logout') }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <div class="user-info" @click="handleLogout">
+            {{ userStore.userInfo?.full_name }} ({{ $t('admin.admin') }})
+            <van-icon name="arrow-down" size="12" />
+          </div>
         </div>
       </div>
-    </el-header>
+    </div>
 
     <!-- 移动端 header -->
     <div v-if="mobile" class="mobile-header">
       <img src="/images/logo1.svg" alt="Logo" class="header-logo" />
-      <button class="lang-btn" @click="toggleLang">{{ currentLang === 'zh' ? 'EN' : '中文' }}</button>
+      <button class="lang-btn" @click="toggleLang">{{ langLabel }}</button>
     </div>
-    
-    <el-container>
+
+    <div class="admin-body">
       <!-- 桌面端侧边栏 -->
-      <el-aside v-if="!mobile" width="200px">
-        <div class="sidebar-logo">
-          <span class="sidebar-title">管理后台</span>
-        </div>
-        <el-menu
-          :default-active="$route.path"
-          router
-          class="admin-menu"
-        >
-            <el-menu-item index="/admin/dashboard">
-              <el-icon><data-analysis /></el-icon>
-              <span>{{ $t('admin.dashboard') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/products">
-              <el-icon><goods /></el-icon>
-              <span>{{ $t('admin.products') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/orders">
-              <el-icon><list /></el-icon>
-              <span>{{ $t('admin.orders') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/merchants">
-              <el-icon><user /></el-icon>
-              <span>{{ $t('admin.merchants') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/categories">
-              <el-icon><Menu /></el-icon>
-              <span>{{ $t('admin.categories') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/announcements">
-              <el-icon><bell /></el-icon>
-              <span>{{ $t('admin.announcements') }}</span>
-            </el-menu-item>
-            <el-menu-item index="/admin/settings">
-              <el-icon><setting /></el-icon>
-              <span>{{ $t('settings.title') }}</span>
-            </el-menu-item>
-        </el-menu>
-      </el-aside>
-      
-      <el-main :style="mobile ? mobileMainStyle : {}">
+      <div v-if="!mobile" class="admin-sidebar">
+        <div class="sidebar-title">管理后台</div>
+        <nav class="admin-nav">
+          <router-link to="/admin/dashboard" class="nav-item" active-class="active">
+            <van-icon name="bar-chart-o" /><span>{{ $t('admin.dashboard') }}</span>
+          </router-link>
+          <router-link to="/admin/products" class="nav-item" active-class="active">
+            <van-icon name="goods-o" /><span>{{ $t('admin.products') }}</span>
+          </router-link>
+          <router-link to="/admin/orders" class="nav-item" active-class="active">
+            <van-icon name="orders-o" /><span>{{ $t('admin.orders') }}</span>
+          </router-link>
+          <router-link to="/admin/merchants" class="nav-item" active-class="active">
+            <van-icon name="manager-o" /><span>{{ $t('admin.merchants') }}</span>
+          </router-link>
+          <router-link to="/admin/categories" class="nav-item" active-class="active">
+            <van-icon name="apps-o" /><span>{{ $t('admin.categories') }}</span>
+          </router-link>
+          <router-link to="/admin/announcements" class="nav-item" active-class="active">
+            <van-icon name="bell" /><span>{{ $t('admin.announcements') }}</span>
+          </router-link>
+          <router-link to="/admin/settings" class="nav-item" active-class="active">
+            <van-icon name="setting-o" /><span>{{ $t('settings.title') }}</span>
+          </router-link>
+          <div class="nav-item nav-logout" @click="handleLogout">
+            <van-icon name="exchange" /><span>{{ $t('profile.logout') }}</span>
+          </div>
+        </nav>
+      </div>
+
+      <main class="admin-main" :style="mobile ? mobileMainStyle : {}">
         <router-view />
-      </el-main>
-    </el-container>
+      </main>
+    </div>
 
     <!-- 移动端底部 TabBar -->
-    <div v-if="mobile" class="mobile-tabbar">
-      <div class="tab-item" :class="{ active: $route.path === '/admin/dashboard' }" @click="$router.push('/admin/dashboard')">
-        <el-icon :size="20"><DataAnalysis /></el-icon>
-        <span>{{ $t('admin.dashboard') }}</span>
-      </div>
-      <div class="tab-item" :class="{ active: $route.path === '/admin/products' }" @click="$router.push('/admin/products')">
-        <el-icon :size="20"><Goods /></el-icon>
-        <span>{{ $t('admin.products') }}</span>
-      </div>
-      <div class="tab-item" :class="{ active: $route.path === '/admin/orders' }" @click="$router.push('/admin/orders')">
-        <el-icon :size="20"><List /></el-icon>
-        <span>{{ $t('admin.orders') }}</span>
-      </div>
-      <div class="tab-item" :class="{ active: $route.path === '/admin/merchants' }" @click="$router.push('/admin/merchants')">
-        <el-icon :size="20"><User /></el-icon>
-        <span>{{ $t('admin.merchants') }}</span>
-      </div>
-      <div class="tab-item" :class="{ active: isMoreActive }" @click="showMore = !showMore">
-        <el-icon :size="20"><MoreFilled /></el-icon>
-        <span>更多</span>
-      </div>
+    <van-tabbar v-if="mobile" route active-color="#1d4ed8">
+      <van-tabbar-item to="/admin/dashboard" icon="bar-chart-o">{{ $t('admin.dashboard') }}</van-tabbar-item>
+      <van-tabbar-item to="/admin/products" icon="goods-o">{{ $t('admin.products') }}</van-tabbar-item>
+      <van-tabbar-item to="/admin/orders" icon="orders-o">{{ $t('admin.orders') }}</van-tabbar-item>
+      <van-tabbar-item to="/admin/merchants" icon="manager-o">{{ $t('admin.merchants') }}</van-tabbar-item>
+      <van-tabbar-item icon="more-o" @click.prevent="showMore = true">更多</van-tabbar-item>
+    </van-tabbar>
 
-      <!-- 更多菜单弹出层 -->
-      <transition name="fade">
-        <div v-if="showMore" class="more-menu-overlay" @click="showMore = false">
-          <div class="more-menu" @click.stop>
-            <div class="more-item" @click="goTo('/admin/categories')">
-              <el-icon :size="22"><Menu /></el-icon>
-              <span>{{ $t('admin.categories') }}</span>
-            </div>
-            <div class="more-item" @click="goTo('/admin/announcements')">
-              <el-icon :size="22"><Bell /></el-icon>
-              <span>{{ $t('admin.announcements') }}</span>
-            </div>
-            <div class="more-item" @click="goTo('/admin/settings')">
-              <el-icon :size="22"><Setting /></el-icon>
-              <span>{{ $t('settings.title') }}</span>
-            </div>
-            <div class="more-item logout" @click="handleLogout">
-              <el-icon :size="22"><SwitchButton /></el-icon>
-              <span>{{ $t('profile.logout') }}</span>
-            </div>
-          </div>
-        </div>
-      </transition>
-    </div>
-  </el-container>
+    <!-- 更多菜单 -->
+    <van-action-sheet v-if="mobile" v-model:show="showMore" :cancel-text="$t('common.cancel')">
+      <van-cell-group inset style="margin-bottom: 8px;">
+        <van-cell :title="$t('admin.categories')" icon="apps-o" is-link @click="goTo('/admin/categories')" />
+        <van-cell :title="$t('admin.announcements')" icon="bell" is-link @click="goTo('/admin/announcements')" />
+        <van-cell :title="$t('settings.title')" icon="setting-o" is-link @click="goTo('/admin/settings')" />
+        <van-cell :title="langLabel" icon="gem-o" @click="toggleLang" />
+      </van-cell-group>
+      <div style="padding: 0 16px 16px;">
+        <van-button block type="danger" plain @click="handleLogout">{{ $t('profile.logout') }}</van-button>
+      </div>
+    </van-action-sheet>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { ElMessageBox } from 'element-plus/es/components/message-box/index'
-import { ArrowDown, DataAnalysis, Goods, List, User, Menu, Bell, MoreFilled, SwitchButton, Setting } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { showConfirmDialog } from 'vant'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import { setLanguage, getCurrentLanguage } from '@/i18n'
 
 const router = useRouter()
-const route = useRoute()
 const userStore = useUserStore()
 const { t } = useI18n()
 const currentLang = ref(getCurrentLanguage())
@@ -150,16 +105,9 @@ const mobileMainStyle = computed(() => ({
   paddingRight: 'var(--tg-content-safe-area-inset-right, 0px)',
 }))
 
-const isMoreActive = computed(() => {
-  return ['/admin/categories', '/admin/announcements', '/admin/settings'].includes(route.path)
-})
-
-const onResize = () => {
-  mobile.value = window.innerWidth < 768
-}
-
-onMounted(() => { window.addEventListener('resize', onResize) })
-onUnmounted(() => { window.removeEventListener('resize', onResize) })
+const onResize = () => { mobile.value = window.innerWidth < 768 }
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 
 const toggleLang = () => {
   const order = ['zh', 'en', 'kh']
@@ -167,6 +115,7 @@ const toggleLang = () => {
   const newLang = order[(idx + 1) % order.length]
   setLanguage(newLang)
   currentLang.value = newLang
+  showMore.value = false
 }
 
 const langLabel = computed(() => {
@@ -180,61 +129,53 @@ const goTo = (path) => {
 }
 
 const handleLogout = () => {
-  showMore.value = false
-  ElMessageBox.confirm(t('admin.logoutConfirm'), t('admin.hint'), {
+  showConfirmDialog({
+    title: t('admin.hint'),
+    message: t('admin.logoutConfirm'),
     confirmButtonText: t('common.confirm'),
     cancelButtonText: t('common.cancel'),
-    type: 'warning',
   }).then(() => {
     userStore.logout()
     router.push('/login')
-  })
-}
-
-const handleCommand = (command) => {
-  if (command === 'logout') {
-    handleLogout()
-  }
+  }).catch(() => {})
 }
 </script>
 
 <style scoped>
 .admin-layout {
   min-height: var(--tg-viewport-stable-height, 100vh);
-}
-
-.el-header {
-  background: #ffffff;
-  color: #1a1a1a;
   display: flex;
-  align-items: center;
-  border-bottom: 1px solid #eef0f3;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  position: relative;
+  flex-direction: column;
 }
 
-.el-header::after {
+/* ===== 桌面端 header ===== */
+.admin-header {
+  background: #fff;
+  border-bottom: 1px solid #eef0f3;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.admin-header::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0; right: 0; bottom: 0;
   height: 2px;
   background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
-  opacity: 0.85;
 }
 
 .header-content {
-  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0 20px;
+  height: 56px;
 }
 
-.header-left {
+.header-left, .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .header-logo {
@@ -243,12 +184,128 @@ const handleCommand = (command) => {
   object-fit: contain;
 }
 
-.header-right {
+.user-info {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
 }
 
+.user-info:hover {
+  background: #f5f7fa;
+}
+
+/* ===== 桌面端布局 ===== */
+.admin-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.admin-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: #f5f7fa;
+  border-right: 1px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-title {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d4ed8;
+  letter-spacing: 2px;
+  border-bottom: 1px solid #e4e7ed;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.admin-nav {
+  padding: 8px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  font-size: 14px;
+  color: #4a5568;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.nav-item:hover {
+  background: #e9f0fd;
+  color: #1d4ed8;
+}
+
+.nav-item.active {
+  background: #e9f0fd;
+  color: #1d4ed8;
+  border-left-color: #1d4ed8;
+  font-weight: 600;
+}
+
+.nav-logout {
+  color: #ef4444;
+  margin-top: 8px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.nav-logout:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.admin-main {
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+}
+
+/* ===== 移动端 header ===== */
+.mobile-header {
+  height: 46px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  position: fixed;
+  top: var(--tg-content-safe-area-inset-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.mobile-header::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -2px;
+  height: 2px;
+  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
+}
+
+.mobile-header .header-logo { height: 28px; }
+
+/* ===== 通用 ===== */
 .lang-btn {
   padding: 4px 12px;
   border: 1px solid #d9dde3;
@@ -267,194 +324,8 @@ const handleCommand = (command) => {
   color: #1d4ed8;
 }
 
-.user-dropdown {
-  color: #1a1a1a;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-weight: 500;
-}
-
-.el-aside {
-  background: #f5f7fa;
-  border-right: 1px solid #e4e7ed;
-}
-
-.sidebar-logo {
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid #e4e7ed;
-  background: #fff;
-}
-
-.sidebar-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1d4ed8;
-  letter-spacing: 2px;
-}
-
-.admin-menu {
-  border: none;
-}
-
-.el-main {
-  background: #fff;
-}
-
-/* ========== 移动端 header ========== */
-.mobile-header {
-  height: 46px;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  position: fixed;
-  top: var(--tg-content-safe-area-inset-top, 0px);
-  left: 0;
-  right: 0;
-  z-index: 100;
-  border-bottom: 1px solid #eef0f3;
-}
-
-.mobile-header::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
-  height: 2px;
-  background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #06b6d4 100%);
-}
-
-.mobile-header .header-logo {
-  height: 28px;
-}
-
-.mobile-header .lang-btn {
-  font-size: 12px;
-  padding: 2px 8px;
-}
-
-/* ========== 移动端底部 TabBar ========== */
-.mobile-tabbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: calc(50px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  padding-bottom: var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
-  background: #fff;
-  border-top: 1px solid #eee;
-  display: flex;
-  z-index: 100;
-}
-
-.mobile-tabbar .tab-item {
-  flex: 1;
-  display: flex;
+/* 移动端适配 */
+.is-mobile .admin-body {
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  font-size: 10px;
-  color: #999;
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-.mobile-tabbar .tab-item.active {
-  color: #1d4ed8;
-}
-
-/* ========== 更多菜单 ========== */
-.more-menu-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  z-index: 200;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.more-menu {
-  background: #fff;
-  border-radius: 16px 16px 0 0;
-  width: 100%;
-  padding: 20px 16px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.more-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 10px;
-  font-size: 15px;
-  color: #333;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.more-item:active {
-  background: #f5f5f5;
-}
-
-.more-item.logout {
-  color: #f56c6c;
-  margin-top: 8px;
-  border-top: 1px solid #f0f0f0;
-  padding-top: 18px;
-  border-radius: 0;
-}
-
-/* ========== 移动端适配 ========== */
-.is-mobile .el-main {
-  padding-top: 46px;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-@media (max-width: 767px) {
-  .el-header {
-    display: none !important;
-  }
-
-  .el-aside {
-    display: none !important;
-  }
-
-  .el-main {
-    padding-top: 46px !important;
-  }
-}
-
-/* 菜单徽章 */
-.menu-badge {
-  margin-left: 8px;
-}
-
-.menu-badge :deep(.el-badge__content) {
-  height: 16px;
-  line-height: 16px;
-  padding: 0 5px;
-  font-size: 11px;
 }
 </style>

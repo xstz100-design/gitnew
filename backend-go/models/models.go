@@ -30,9 +30,8 @@ const (
 type PaymentStatus string
 
 const (
-	PaymentUnpaid  PaymentStatus = "unpaid"
-	PaymentCash    PaymentStatus = "cash"
-	PaymentMonthly PaymentStatus = "monthly"
+	PaymentUnpaid PaymentStatus = "unpaid"
+	PaymentCash   PaymentStatus = "cash"
 )
 
 type DeliveryStatus string
@@ -52,14 +51,6 @@ const (
 	AnnouncementAbout   AnnouncementType = "about"
 )
 
-type BillStatus string
-
-const (
-	BillUnpaid  BillStatus = "unpaid"
-	BillPaid    BillStatus = "paid"
-	BillPartial BillStatus = "partial"
-)
-
 // ──────────────────────────── User ────────────────────────────
 
 type User struct {
@@ -71,9 +62,6 @@ type User struct {
 	IsSuperAdmin       bool           `gorm:"default:false" json:"is_super_admin"`
 	Phone              *string        `gorm:"size:20;uniqueIndex" json:"phone"`
 	Address            *string        `gorm:"size:200" json:"address"`
-	CreditLimit        float64        `gorm:"default:0" json:"credit_limit"`
-	BillingCycleDays   *int           `json:"billing_cycle_days"`
-	AllowCredit        bool           `gorm:"default:false" json:"allow_credit"`
 	LocationURL        *string        `gorm:"size:500" json:"location_url"`
 	StorePhoto         *string        `gorm:"size:500" json:"store_photo"`
 	TelegramID         *int64         `gorm:"uniqueIndex" json:"telegram_id"`
@@ -261,24 +249,6 @@ type Announcement struct {
 }
 
 func (Announcement) TableName() string { return "announcements" }
-
-// ──────────────────────────── MonthlyBill ────────────────────────────
-
-type MonthlyBill struct {
-	ID          int64      `gorm:"primarykey;autoIncrement" json:"id"`
-	MerchantID  int64      `gorm:"index;column:merchant_id" json:"merchant_id"`
-	Year        *int       `json:"year"`
-	Month       *int       `json:"month"`
-	PeriodStart *time.Time `gorm:"column:period_start" json:"period_start"`
-	PeriodEnd   *time.Time `gorm:"column:period_end" json:"period_end"`
-	TotalAmount float64    `gorm:"default:0;column:total_amount" json:"total_amount"`
-	PaidAmount  float64    `gorm:"default:0;column:paid_amount" json:"paid_amount"`
-	Status      BillStatus `gorm:"size:20;default:'unpaid'" json:"status"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-}
-
-func (MonthlyBill) TableName() string { return "monthly_bills" }
 
 // ──────────────────────────── SystemSetting ────────────────────────────
 

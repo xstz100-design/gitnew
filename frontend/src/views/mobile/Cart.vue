@@ -21,11 +21,6 @@
     </van-empty>
     
     <template v-else>
-      <!-- 商铺信息 -->
-      <van-cell-group inset>
-        <van-cell :title="$t('cart.wholesaleShop')" is-link />
-      </van-cell-group>
-      
       <!-- 商品列表 -->
       <van-checkbox-group v-model="checkedItems">
         <van-swipe-cell
@@ -46,7 +41,7 @@
               <div class="item-name">{{ item.name }}</div>
               <div v-if="item.name_kh" class="item-name-kh">{{ item.name_kh }}</div>
               <div v-if="item.purchase_mode && item.purchase_mode !== 'default'" class="item-mode-tag">
-                {{ item.purchase_mode === 'piece' ? (item.display_unit || '件购') : (item.display_unit || '箱购') }}
+                {{ item.purchase_mode === 'piece' ? (item.display_unit || $t('cart.pieceBuy')) : (item.display_unit || $t('cart.boxBuy')) }}
               </div>
               
               <div class="item-price">
@@ -77,23 +72,60 @@
         </van-swipe-cell>
       </van-checkbox-group>
       
-      <!-- 配送信息 -->
-      <van-cell-group inset>
-        <van-field
-          v-model="orderForm.delivery_address"
-          :label="$t('cart.address')"
-          :placeholder="$t('cart.addressPlaceholder')"
-          clearable
-          @focus="handleInputFocus"
-        />
-        <van-field
-          v-model="orderForm.delivery_phone"
-          :label="$t('cart.phone')"
-          type="tel"
-          :placeholder="$t('cart.phonePlaceholder')"
-          clearable
-          @focus="handleInputFocus"
-        />
+      <!-- 地址选择器 -->
+      <van-cell-group inset class="section-gap">
+        <van-cell
+          :title="$t('cart.selectAddress')"
+          is-link
+          :label="selectedAddress ? selectedAddress.full_address : $t('cart.noAddress')"
+          @click="showAddressPicker = true"
+        >
+          <template #value>
+            <span v-if="selectedAddress" class="addr-label-tag">{{ selectedAddress.label }}</span>
+          </template>
+        </van-cell>
+
+        <!-- 配送费与距离 -->
+        <template v-if="selectedAddress">
+          <van-cell :title="$t('cart.deliveryFee')">
+            <template #value>
+              <span v-if="estimatingFee" style="color: #999">{{ $t('cart.estimating') }}</span>
+              <span v-else-if="deliveryFee !== null" class="fee-value">
+                ${{ deliveryFee.toFixed(2) }}
+              </span>
+              <span v-else style="color: #999">--</span>
+            </template>
+            <template #label>
+              <span class="distance-hint">
+                {{ $t('cart.distanceDisplay', { dist: selectedAddress.distance_km || '?' }) }}
+              </span>
+            </template>
+          </van-cell>
+
+          <!-- 配送说明 -->
+          <van-cell
+            :title="$t('cart.deliveryRulesTitle')"
+            :label="$t('cart.deliveryRulesContent')"
+            class="delivery-rules-cell"
+          >
+            <template #icon>
+              <van-icon name="info-o" class="rules-icon" />
+            </template>
+          </van-cell>
+        </template>
+
+        <!-- 无地址时引导 -->
+        <van-cell v-else :title="$t('cart.noAddress')" :label="$t('cart.selectAddressHint')">
+          <template #right-icon>
+            <van-button size="small" round type="primary" plain @click="$router.push('/m/profile')">
+              {{ $t('cart.toAddAddress') }}
+            </van-button>
+          </template>
+        </van-cell>
+      </van-cell-group>
+
+      <!-- 备注 -->
+      <van-cell-group inset class="section-gap">
         <van-field
           v-model="orderForm.note"
           :label="$t('cart.note')"
@@ -105,16 +137,6 @@
           show-word-limit
           @focus="handleInputFocus"
         />
-        <van-cell :title="$t('cart.deliveryFee')">
-          <template #value>
-            <span v-if="estimatingFee" style="color:#999">{{ $t('cart.estimating') }}</span>
-            <span v-else-if="deliveryFee !== null" style="color:#ee0a24;font-weight:600">${{ deliveryFee.toFixed(2) }}</span>
-            <span v-else style="color:#999">--</span>
-          </template>
-          <template v-if="autoEstimated && !estimatingFee" #label>
-            <span style="font-size:11px;color:#52c41a">📍 {{ $t('cart.autoEstimated') }}</span>
-          </template>
-        </van-cell>
       </van-cell-group>
 
       <!-- 预约配送时间 -->
@@ -155,14 +177,11 @@
       <van-cell-group inset>
         <van-cell :title="$t('cart.paymentMethod')" is-link @click="openPaymentPicker">
           <template #value>
-            <span :style="{ color: orderForm.payment_status === 'monthly' ? '#1989fa' : '#333' }">
-              {{ orderForm.payment_status === 'monthly' ? $t('cart.monthlyPayment') : $t('cart.cashPayment') }}
-            </span>
+            <span style="color:#333">{{ $t('cart.cashPayment') }}</span>
           </template>
         </van-cell>
       </van-cell-group>
 
-      <!-- 支付方式选择弹窗 -->
       <van-action-sheet
         v-model:show="showPaymentPicker"
         teleport="body"
@@ -170,6 +189,41 @@
         :cancel-text="$t('common.cancel')"
         @select="onPaymentSelect"
       />
+
+      <!-- 地址选择弹窗 -->
+      <van-action-sheet
+        v-model:show="showAddressPicker"
+        teleport="body"
+        :title="$t('cart.selectAddress')"
+        :cancel-text="$t('common.cancel')"
+        close-on-click-action
+      >
+        <template #default>
+          <div class="address-sheet-body">
+            <div
+              v-for="addr in userStore.addresses"
+              :key="addr.id"
+              class="address-option"
+              :class="{ active: selectedAddress?.id === addr.id }"
+              @click="selectAddress(addr)"
+            >
+              <div class="addr-option-top">
+                <span class="addr-option-label">{{ addr.label }}</span>
+                <span v-if="addr.isDefault" class="addr-default-badge">{{ $t('common.default') }}</span>
+              </div>
+              <div class="addr-option-detail">{{ addr.full_address }}</div>
+              <div class="addr-option-phone">{{ addr.phone }}</div>
+            </div>
+            <div v-if="userStore.addresses.length === 0" class="address-empty-tip">
+              <van-icon name="location-o" size="40" color="#d9d9d9" />
+              <p>{{ $t('cart.noAddress') }}</p>
+              <van-button size="small" round type="primary" @click="$router.push('/m/profile')">
+                {{ $t('cart.toAddAddress') }}
+              </van-button>
+            </div>
+          </div>
+        </template>
+      </van-action-sheet>
       
       <!-- 底部结算栏 -->
       <van-submit-bar
@@ -178,6 +232,7 @@
         @submit="handlePrimaryAction"
         :loading="submitting"
         :disabled="submitting"
+        class="cart-submit-bar"
       >
         <van-checkbox v-model="checkAll">{{ $t('cart.selectAll') }}</van-checkbox>
         <template #tip>
@@ -203,7 +258,7 @@
         <!-- 成功标识（居中，绿色图标） -->
         <div class="or-success">
           <van-icon name="passed" size="48" color="#07c160" />
-          <div class="or-success-title">下单成功</div>
+          <div class="or-success-title">{{ $t('cart.orderTitle') }}</div>
           <div v-if="orderResult" class="or-success-amount">
             ${{ Number(orderResult.total_usd).toFixed(2) }}
             <span class="or-success-khr">{{ khrLabel(orderResult.total_usd) }}</span>
@@ -213,14 +268,14 @@
         <!-- 付款流程说明 -->
         <div class="or-notice">
           <van-icon name="warn-o" size="16" color="#ff976a" class="or-notice-icon" />
-          <span>付款后即可安排派送——请将以下订单信息发给客服，确认付款后将为您安排配送。</span>
+          <span>{{ $t('cart.orderPaymentGuide') }}</span>
         </div>
 
         <!-- 订单信息文本块（直接展示，点整块复制） -->
         <div v-if="orderText" class="or-text-block" @click="copyOrderInfo">
           <div class="or-text-header">
-            <span class="or-text-label">订单信息</span>
-            <span class="or-copy-tag">点击复制</span>
+            <span class="or-text-label">{{ $t('cart.orderInfo') }}</span>
+            <span class="or-copy-tag">{{ $t('cart.orderCopy') }}</span>
           </div>
           <pre class="or-text-content">{{ orderText }}</pre>
         </div>
@@ -228,10 +283,10 @@
         <!-- 操作按钮 -->
         <div class="or-actions">
           <van-button v-if="contactHref" block type="primary" @click="openContact">
-            <van-icon name="service-o" style="margin-right:6px" />联系客服完成付款
+            <van-icon name="service-o" style="margin-right:6px" />{{ $t('cart.contactToPay') }}
           </van-button>
           <van-button block plain type="primary" @click="copyOrderInfo">
-            <van-icon name="description" style="margin-right:6px" />复制订单信息
+            <van-icon name="description" style="margin-right:6px" />{{ $t('cart.copyOrder') }}
           </van-button>
         </div>
       </div>
@@ -240,7 +295,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showDialog } from 'vant'
@@ -278,21 +333,21 @@ const openContact = () => {
 const orderText = computed(() => {
   if (!orderResult.value) return ''
   const o = orderResult.value
-  let text = `订单号: ${o.order_no}\n`
-  if (o.delivery_address) text += `地址: ${o.delivery_address}\n`
-  if (o.delivery_phone) text += `电话: ${o.delivery_phone}\n`
-  text += `商品:\n`
+  let text = `${t('cart.orderNo')}: ${o.order_no}\n`
+  if (o.delivery_address) text += `${t('cart.address')}: ${o.delivery_address}\n`
+  if (o.delivery_phone) text += `${t('cart.phone')}: ${o.delivery_phone}\n`
+  text += `${t('cart.products')}:\n`
   for (const item of o.items || []) {
     text += `  ${item.product_name} × ${item.quantity} = $${Number(item.subtotal_usd).toFixed(2)}\n`
   }
-  text += `合计: $${Number(o.total_usd).toFixed(2)}`
+  text += `${t('cart.total')}: $${Number(o.total_usd).toFixed(2)}`
   return text
 })
 
 const copyOrderInfo = () => {
   if (!orderText.value) return
   navigator.clipboard?.writeText(orderText.value)
-    .then(() => showSuccessToast('已复制，发给客服即可'))
+    .then(() => showSuccessToast(t('cart.copiedToShare')))
     .catch(() => showToast(orderText.value))
 }
 
@@ -329,21 +384,36 @@ const onTimePickerConfirm = ({ selectedValues }) => {
   showTimePicker.value = false
 }
 
-// 运费估算（根据地址自动计算，不需要用户手动输入距离）
+const orderForm = ref({
+  payment_status: 'cash',
+  note: '',
+  scheduled_at: null,
+})
+
+// 地址选择
+const showAddressPicker = ref(false)
+const selectedAddress = ref(null)
+
+const selectAddress = (addr) => {
+  selectedAddress.value = addr
+  showAddressPicker.value = false
+  autoEstimateFromAddress(addr)
+}
+
+// 运费估算（根据选中地址）
 const deliveryFee = ref(null)
 const estimatingFee = ref(false)
-const autoEstimated = ref(false)
-let estimateDebounceTimer = null
 
-// 根据配送地址文本自动估算
-const autoEstimateFromAddress = async (address) => {
-  if (!address || address.trim().length < 5) return
+const autoEstimateFromAddress = async (addr) => {
+  if (!addr || !addr.distance_km) {
+    deliveryFee.value = null
+    return
+  }
   estimatingFee.value = true
   try {
-    const res = await estimateDeliveryFeeByAddress('', address.trim())
+    const res = await estimateDeliveryFeeByAddress('', addr.full_address || addr.full_address_kh || '')
     if (res.warning) return
     deliveryFee.value = res.delivery_fee_usd ?? null
-    autoEstimated.value = true
   } catch {
     // 静默失败
   } finally {
@@ -368,7 +438,6 @@ const paymentActions = computed(() => {
   const actions = [
     { name: t('cart.cashPayment'), value: 'cash' },
   ]
-  // 月结支付需要后端支持，默认展示现金支付
   return actions
 })
 
@@ -385,38 +454,16 @@ const openPaymentPicker = () => {
   showPaymentPicker.value = true
 }
 
-const orderForm = ref({
-  delivery_address: '',
-  delivery_phone: '',
-  payment_status: 'cash',
-  note: '',
-  scheduled_at: null,
-})
-
-// 自动根据定位估算运费 + 加载联系方式
+// 自动选择默认地址 + 加载联系方式
 onMounted(async () => {
-  const info = userStore.userInfo
-  if (!orderForm.value.delivery_address && info?.address) {
-    orderForm.value.delivery_address = info.address
-  }
-  if (!orderForm.value.delivery_phone && info?.phone) {
-    orderForm.value.delivery_phone = info.phone
-  }
-  if (orderForm.value.delivery_address) {
-    autoEstimateFromAddress(orderForm.value.delivery_address)
+  const defaultAddr = userStore.addresses.find(a => a.isDefault) || userStore.addresses[0]
+  if (defaultAddr) {
+    selectedAddress.value = defaultAddr
+    autoEstimateFromAddress(defaultAddr)
   }
   try {
     contactInfoData.value = await getContactInfo()
   } catch { /* 静默 */ }
-})
-
-// 地址变更时防抖自动估算
-watch(() => orderForm.value.delivery_address, (newAddr) => {
-  if (estimateDebounceTimer) clearTimeout(estimateDebounceTimer)
-  if (!newAddr || newAddr.trim().length < 5) return
-  estimateDebounceTimer = setTimeout(() => {
-    autoEstimateFromAddress(newAddr)
-  }, 1500)
 })
 
 // 清空购物车
@@ -469,26 +516,23 @@ const handleBack = () => {
 }
 
 const handleSubmit = async () => {
-  if (submitting.value) {
-    return
-  }
+  if (submitting.value) return
 
   if (checkedItems.value.length === 0) {
     showDialog({ message: t('cart.selectItems') })
     return
   }
-  
+
   // 地址校验
-  const address = orderForm.value.delivery_address?.trim()
-  if (!address) {
+  if (!selectedAddress.value) {
     showDialog({ message: t('cart.addressRequired') })
     return
   }
-  
+
   submitting.value = true
   clientRequestId.value = clientRequestId.value || buildClientRequestId()
   hapticFeedback('medium')
-  
+
   try {
     const items = cartStore.items
       .filter(item => checkedItems.value.includes(item.id))
@@ -503,12 +547,21 @@ const handleSubmit = async () => {
       submitting.value = false
       return
     }
-    
-    const result = await createOrder({
+
+    const payload = {
       items,
-      ...orderForm.value,
+      delivery_address: selectedAddress.value.full_address,
+      delivery_phone: selectedAddress.value.phone,
+      payment_status: orderForm.value.payment_status,
+      note: orderForm.value.note,
+      scheduled_at: orderForm.value.scheduled_at,
       client_request_id: clientRequestId.value,
-    })
+    }
+    if (deliveryFee.value !== null) {
+      payload.delivery_fee_usd = deliveryFee.value
+    }
+
+    const result = await createOrder(payload)
 
     // 清除已下单的商品
     checkedItems.value.forEach(id => {
@@ -547,9 +600,15 @@ const handlePrimaryAction = async () => {
   padding-bottom: calc(100px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 
-/* van-submit-bar 默认 bottom:0，会被导航栏遮挡，需偏移导航栏高度 */
+/* van-submit-bar 与底部导航栏无缝衔接 */
 :deep(.van-submit-bar) {
   bottom: calc(var(--van-tabbar-height, 50px) + env(safe-area-inset-bottom, 0px));
+  box-shadow: none;
+  border-top: 1px solid #f0f0f0;
+}
+:deep(.van-submit-bar__tip) {
+  padding: 4px 12px;
+  font-size: 11px;
 }
 
 .cart-logo {
@@ -558,17 +617,17 @@ const handlePrimaryAction = async () => {
   margin: 0 auto;
 }
 
+/* ---- 商品列表 ---- */
+.van-swipe-cell + .van-swipe-cell .cart-item {
+  border-top: 1px solid #f5f5f5;
+}
+
 .cart-item {
   display: flex;
   align-items: center;
   padding: 14px 12px;
   background: #fff;
   gap: 12px;
-}
-
-/* 商品卡片之间的间距和圆角 */
-.van-swipe-cell + .van-swipe-cell .cart-item {
-  border-top: 1px solid #f0f0f0;
 }
 
 .item-info {
@@ -620,7 +679,7 @@ const handlePrimaryAction = async () => {
   color: #8c8c8c;
 }
 
-/* ===== 增强空状态 ===== */
+/* ---- 空状态 ---- */
 .cart-empty {
   padding-top: 80px;
 }
@@ -643,7 +702,7 @@ const handlePrimaryAction = async () => {
   margin-top: 12px;
 }
 
-/* ===== 商品列表卡片容器 ===== */
+/* ---- 商品列表卡片容器 ---- */
 :deep(.van-checkbox-group) {
   margin: 8px 12px;
   border-radius: 12px;
@@ -652,20 +711,6 @@ const handlePrimaryAction = async () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-/* 商品卡片内部 */
-.cart-item {
-  display: flex;
-  align-items: center;
-  padding: 14px 12px;
-  background: #fff;
-  gap: 12px;
-}
-
-.van-swipe-cell + .van-swipe-cell .cart-item {
-  border-top: 1px solid #f0f0f0;
-}
-
-/* 商品首项增加圆角 */
 :deep(.van-swipe-cell:first-child .cart-item) {
   border-radius: 12px 12px 0 0;
 }
@@ -676,14 +721,115 @@ const handlePrimaryAction = async () => {
   border-radius: 12px;
 }
 
-.clear-cart-btn {
-  font-size: 13px;
-  color: #ee0a24;
-  padding: 4px 4px;
-  cursor: pointer;
+/* ---- 地址选择器 ---- */
+.section-gap {
+  margin: 8px 12px !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+.addr-label-tag {
+  font-size: 11px;
+  color: #1D4ED8;
+  background: #EFF6FF;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.fee-value {
+  color: #f5222d;
+  font-weight: 700;
+  font-size: 16px;
+}
+.distance-hint {
+  font-size: 12px;
+  color: #969799;
+}
+.delivery-rules-cell :deep(.van-cell__title) {
+  font-size: 12px;
+  color: #969799;
+}
+.delivery-rules-cell :deep(.van-cell__label) {
+  font-size: 12px;
+  color: #969799;
+  margin-top: 2px;
+}
+.rules-icon {
+  font-size: 16px;
+  color: #c8c9cc;
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
-/* ===== 下单成功面板 ===== */
+/* ---- 地址弹窗 ---- */
+.address-sheet-body {
+  padding: 0 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.address-option {
+  padding: 14px 12px;
+  border-radius: 10px;
+  background: #f7f8fa;
+  margin-bottom: 10px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+}
+.address-option.active {
+  border-color: #1989fa;
+  background: #ecf5ff;
+}
+.addr-option-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.addr-option-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #323233;
+}
+.addr-default-badge {
+  font-size: 10px;
+  color: #1989fa;
+  background: #ecf5ff;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.addr-option-detail {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+.addr-option-phone {
+  font-size: 12px;
+  color: #969799;
+  margin-top: 2px;
+}
+.address-empty-tip {
+  text-align: center;
+  padding: 40px 0;
+  color: #969799;
+}
+.address-empty-tip p {
+  margin: 12px 0 16px;
+}
+
+/* ---- 紧凑表单布局 ---- */
+:deep(.van-cell-group) {
+  margin-top: 6px !important;
+}
+:deep(.van-cell-group .van-cell) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+:deep(.van-field__label) {
+  width: auto;
+  min-width: 54px;
+  margin-right: 6px;
+}
+
+/* ---- 下单成功面板 ---- */
 .order-result-sheet {
   display: flex;
   flex-direction: column;
@@ -693,7 +839,6 @@ const handlePrimaryAction = async () => {
   max-height: 88vh;
 }
 
-/* 成功标识 */
 .or-success {
   display: flex;
   flex-direction: column;
@@ -719,8 +864,6 @@ const handlePrimaryAction = async () => {
   font-weight: 400;
   color: #969799;
 }
-
-/* 付款说明条（Vant warning 色调） */
 .or-notice {
   display: flex;
   align-items: flex-start;
@@ -734,8 +877,6 @@ const handlePrimaryAction = async () => {
   line-height: 1.6;
 }
 .or-notice-icon { margin-top: 1px; flex-shrink: 0; }
-
-/* 订单信息文本块 */
 .or-text-block {
   border: 1px solid #ebedf0;
   border-radius: 8px;
@@ -773,25 +914,13 @@ const handlePrimaryAction = async () => {
   overflow-y: auto;
   background: #fff;
 }
-
-/* 操作按钮 */
 .or-actions { display: flex; flex-direction: column; gap: 10px; }
+.checkout-disabled-tip { margin-bottom: 8px; }
 
-.checkout-disabled-tip {
-  margin-bottom: 8px;
-}
-
-/* 紧凑表单布局 */
-:deep(.van-cell-group) {
-  margin-top: 6px !important;
-}
-:deep(.van-cell-group .van-cell) {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-:deep(.van-field__label) {
-  width: auto;
-  min-width: 54px;
-  margin-right: 6px;
+.clear-cart-btn {
+  font-size: 13px;
+  color: #ee0a24;
+  padding: 4px 4px;
+  cursor: pointer;
 }
 </style>

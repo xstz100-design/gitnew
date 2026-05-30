@@ -60,6 +60,7 @@ backups/
 # ===== Go 编译产物 =====
 backend-go/wholesale
 backend-go/wholesale.exe
+backend-go/wholesale_linux
 *.tar.gz
 *.zip
 

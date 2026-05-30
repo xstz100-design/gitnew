@@ -123,12 +123,9 @@
           <div v-if="product.unit_weight_value" class="card-weight">
             {{ product.unit_weight_value }}{{ product.unit_weight_unit || 'g' }}
           </div>
-          <div v-if="product.price_per_piece_usd || product.price_per_package_usd" class="card-prices">
-            <span v-if="product.price_per_piece_usd" class="price-badge">
-              件 ${{ Number(product.price_per_piece_usd).toFixed(2) }}
-            </span>
-            <span v-if="product.price_per_package_usd" class="price-badge price-case">
-              箱 ${{ Number(product.price_per_package_usd).toFixed(2) }}
+          <div v-if="product.price_per_package_usd" class="card-prices">
+            <span class="price-badge">
+              {{ product.pack_name || $t('product.caseFallback') }} ${{ Number(product.price_per_package_usd).toFixed(2) }}
             </span>
           </div>
           <div class="card-action" @click.stop>

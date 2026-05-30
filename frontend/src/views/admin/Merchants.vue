@@ -135,18 +135,6 @@
           </van-cell>
         </van-cell-group>
 
-        <template v-if="form.role === 'merchant'">
-          <van-cell-group inset style="margin-top: 8px;">
-            <van-cell :title="$t('admin.allowMonthlyBilling')">
-              <template #right-icon>
-                <van-switch v-model="form.allow_credit" size="20" />
-              </template>
-            </van-cell>
-            <van-field v-model.number="form.credit_limit" type="number" :label="$t('admin.creditLimit')" readonly />
-            <van-field v-model.number="form.billing_cycle_days" type="number" :label="$t('admin.billingDay')" :placeholder="$t('admin.billingDayPlaceholder')" />
-          </van-cell-group>
-        </template>
-
         <van-cell-group v-if="isEdit && !form.is_super_admin" inset style="margin-top: 8px;">
           <van-cell :title="$t('product.status')">
             <template #right-icon>
@@ -368,8 +356,7 @@ const submitting = ref(false)
 
 const form = reactive({
   id: null, username: '', password: '', full_name: '', role: 'merchant',
-  phone: '', address: '', location_url: '', credit_limit: 0,
-  billing_cycle_days: null, allow_credit: false, is_active: true,
+  phone: '', address: '', location_url: '', is_active: true,
   telegram_id: '', is_super_admin: false,
 })
 
@@ -421,8 +408,7 @@ const loadMerchants = async () => {
 const resetForm = () => {
   Object.assign(form, {
     id: null, username: '', password: '', full_name: '', role: 'merchant',
-    phone: '', address: '', location_url: '', credit_limit: 0,
-    billing_cycle_days: null, allow_credit: false, is_active: true,
+    phone: '', address: '', location_url: '', is_active: true,
     telegram_id: '', is_super_admin: false,
   })
   newAccountPassword.value = ''
@@ -440,9 +426,7 @@ const handleEdit = (row) => {
     id: row.id, username: row.username, password: '',
     full_name: row.full_name || '', role: row.role,
     phone: row.phone || '', address: row.address || '',
-    location_url: row.location_url || '', credit_limit: row.credit_limit || 0,
-    billing_cycle_days: row.billing_cycle_days || null, allow_credit: row.allow_credit || false,
-    is_active: row.is_active, telegram_id: row.telegram_id || '',
+    location_url: row.location_url || '', is_active: row.is_active, telegram_id: row.telegram_id || '',
     is_super_admin: !!row.is_super_admin,
   })
   isEdit.value = true
@@ -471,8 +455,7 @@ const handleSubmit = async () => {
     if (isEdit.value) {
       const payload = {
         full_name: form.full_name, phone: form.phone, address: form.address,
-        location_url: form.location_url, credit_limit: form.credit_limit,
-        billing_cycle_days: form.billing_cycle_days, allow_credit: form.allow_credit,
+        location_url: form.location_url,
         is_active: form.is_active, telegram_id: form.telegram_id || null,
       }
       await updateUser(form.id, payload)
@@ -482,8 +465,6 @@ const handleSubmit = async () => {
       const res = await register({
         full_name: form.full_name, role: form.role, phone: form.phone,
         address: form.address, location_url: form.location_url,
-        credit_limit: form.credit_limit, billing_cycle_days: form.billing_cycle_days,
-        allow_credit: form.allow_credit,
       })
       newAccountNumber.value = res.user.username
       newAccountPassword.value = res.temporary_password

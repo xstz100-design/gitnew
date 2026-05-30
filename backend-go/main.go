@@ -216,17 +216,6 @@ func main() {
 		annAdmin.DELETE("/:id", handlers.DeleteAnnouncement)
 	}
 
-	// ── 账单
-	billingAuth := api.Group("/billing", middleware.Auth())
-	{
-		billingAuth.GET("", handlers.ListBills)
-	}
-	billingAdmin := api.Group("/billing", middleware.Auth(), middleware.RequireAdmin())
-	{
-		billingAdmin.POST("/generate", handlers.GenerateBills)
-		billingAdmin.PATCH("/:id", handlers.UpdateBill)
-	}
-
 	// ── 设置
 	settingsPub := api.Group("/settings")
 	{

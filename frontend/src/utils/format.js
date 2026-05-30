@@ -66,7 +66,6 @@ export function getPaymentStatusText(status) {
   const map = {
     unpaid: t('order.unpaid'),
     cash: t('order.cash'),
-    monthly: t('order.monthly'),
   }
   return map[key] || status
 }

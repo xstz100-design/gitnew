@@ -46,20 +46,75 @@
           <span v-if="addressSummary" class="addr-summary-text">{{ addressSummary }}</span>
           <span v-else class="addr-summary-empty">{{ $t('profile.setDeliveryAddress') }}</span>
         </template>
+        <template #extra>
+          <van-tag v-if="userStore.addresses.length" round>{{ userStore.addresses.length }}</van-tag>
+        </template>
       </van-cell>
     </van-cell-group>
 
-    <!-- 地址编辑弹层 -->
+    <!-- 多地址管理弹层 -->
     <van-popup
       v-model:show="showAddressPopup"
       position="bottom"
       round
-      :style="{ maxHeight: '88%' }"
+      :style="{ maxHeight: '92%' }"
       closeable
+      :close-on-popstate="false"
     >
       <div class="addr-popup">
         <div class="addr-popup-title">{{ $t('profile.myAddress') }}</div>
-        <div class="addr-popup-body">
+
+        <!-- 地址列表 -->
+        <div v-if="!editingAddressId" class="addr-list-wrap">
+          <div
+            v-for="addr in userStore.addresses"
+            :key="addr.id"
+            class="addr-card"
+            :class="{ 'is-default': addr.isDefault }"
+          >
+            <div class="addr-card-header">
+              <div class="addr-card-tag">
+                <van-tag :type="addr.isDefault ? 'primary' : 'default'" size="medium">
+                  {{ addr.label || $t('profile.defaultAddress') }}
+                </van-tag>
+                <van-tag v-if="addr.isDefault" plain type="primary" size="small" style="margin-left:6px">
+                  {{ $t('profile.defaultTag') }}
+                </van-tag>
+              </div>
+              <div class="addr-card-actions">
+                <van-icon name="edit" size="18" @click="editAddress(addr)" />
+                <van-icon name="delete" size="18" @click="deleteAddress(addr)" />
+              </div>
+            </div>
+            <div class="addr-card-contact">{{ addr.full_name }} · {{ addr.phone }}</div>
+            <div class="addr-card-address">{{ addr.full_address }}</div>
+            <div v-if="!addr.isDefault && userStore.addresses.length > 1" class="addr-set-default" @click="setAsDefault(addr)">
+              {{ $t('profile.setDefault') }}
+            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <van-empty v-if="!userStore.addresses.length" :description="$t('profile.noAddress')" />
+
+          <!-- 添加按钮 -->
+          <div class="addr-add-btn">
+            <van-button round block plain icon="plus" type="primary" @click="startAddAddress">
+              {{ $t('profile.addAddress') }}
+            </van-button>
+          </div>
+        </div>
+
+        <!-- 添加/编辑表单 -->
+        <div v-else class="addr-form-wrap">
+          <div class="addr-form-back" @click="editingAddressId = null">
+            <van-icon name="arrow-left" /> {{ $t('common.back') }}
+          </div>
+          <van-field
+            v-model="addressForm.label"
+            :label="$t('profile.addressLabel')"
+            :placeholder="$t('profile.addressLabelHint')"
+            clearable
+          />
           <van-field
             v-model="addressForm.full_name"
             :label="$t('profile.name')"
@@ -67,14 +122,14 @@
             clearable
           />
           <van-field
-            :model-value="userStore.userInfo?.phone || ''"
+            v-model="addressForm.phone"
+            type="tel"
             :label="$t('profile.phone')"
-            readonly
-            is-link
-            @click="openPhoneEdit"
+            :placeholder="$t('register.phonePlaceholder')"
+            clearable
           />
           <van-field
-            v-model="addressForm.address"
+            v-model="addressForm.full_address"
             :label="$t('profile.address')"
             type="textarea"
             rows="2"
@@ -89,39 +144,20 @@
             @click="openLocationPickerFromPopup"
           >
             <template #value>
-              <span v-if="userStore.userInfo?.location_url" class="map-set-text">{{ $t('profile.viewMap') }}</span>
+              <span v-if="addressForm.location_url" class="map-set-text">{{ $t('profile.viewMap') }}</span>
               <span v-else>{{ $t('profile.notSet') }}</span>
             </template>
           </van-cell>
-          <van-cell :title="$t('profile.storePhoto')" icon="photograph">
-            <template #value>
-              <div class="store-photo-cell">
-                <van-image
-                  v-if="userStore.userInfo?.store_photo"
-                  :src="userStore.userInfo.store_photo"
-                  width="60"
-                  height="45"
-                  fit="cover"
-                  radius="4"
-                  @click="previewStorePhoto"
-                />
-                <van-uploader
-                  v-else
-                  :after-read="onStorePhotoRead"
-                  :max-count="1"
-                  accept="image/*"
-                >
-                  <van-button size="mini" type="primary" plain>{{ $t('profile.uploadStorePhoto') }}</van-button>
-                </van-uploader>
-                <van-icon v-if="userStore.userInfo?.store_photo" name="cross" class="remove-photo" @click="removeStorePhoto" />
-              </div>
+          <van-cell center :title="$t('profile.setAsDefault')">
+            <template #right-icon>
+              <van-switch v-model="addressForm.isDefault" size="22" />
             </template>
           </van-cell>
-        </div>
-        <div class="addr-popup-footer">
-          <van-button type="primary" block round :loading="saving" @click="handleSaveAddress">
-            {{ $t('common.save') }}
-          </van-button>
+          <div class="addr-form-footer">
+            <van-button type="primary" block round :loading="saving" @click="handleSaveAddress">
+              {{ editingAddressId ? $t('common.update') : $t('common.save') }}
+            </van-button>
+          </div>
         </div>
       </div>
     </van-popup>
@@ -360,42 +396,105 @@ const editValue = ref('')
 const sendingPhoneCode = ref(false)
 const phoneVerifyForm = reactive({ phone: '', code: '' })
 
-// ── 我的地址弹层 ──
+// ── 多地址管理 ──
 const showAddressPopup = ref(false)
 const saving = ref(false)
-const addressForm = reactive({ full_name: '', address: '' })
+const editingAddressId = ref(null)
+const addressForm = reactive({
+  id: null,
+  label: '',
+  full_name: '',
+  phone: '',
+  full_address: '',
+  location_url: '',
+  isDefault: false,
+})
 
 const addressSummary = computed(() => {
-  const info = userStore.userInfo
-  if (!info) return ''
-  return [info.full_name, info.phone, info.address].filter(Boolean).join(' · ')
+  const defaultAddr = userStore.defaultAddress
+  if (!defaultAddr) return ''
+  return defaultAddr.full_name + ' · ' + defaultAddr.phone + ' · ' + defaultAddr.full_address
 })
 
 const openAddressPopup = () => {
-  addressForm.full_name = userStore.userInfo?.full_name || ''
-  addressForm.address = userStore.userInfo?.address || ''
+  editingAddressId.value = null
   showAddressPopup.value = true
   hapticFeedback('light')
-}
-
-const openPhoneEdit = () => {
-  handlePhoneEdit()
 }
 
 const openLocationPickerFromPopup = () => {
   openLocationPicker()
 }
 
+const startAddAddress = () => {
+  editingAddressId.value = -1 // -1 means new
+  addressForm.id = null
+  addressForm.label = ''
+  addressForm.full_name = userStore.userInfo?.full_name || ''
+  addressForm.phone = userStore.userInfo?.phone || ''
+  addressForm.full_address = ''
+  addressForm.location_url = ''
+  addressForm.isDefault = userStore.addresses.length === 0
+}
+
+const editAddress = (addr) => {
+  editingAddressId.value = addr.id
+  addressForm.id = addr.id
+  addressForm.label = addr.label || ''
+  addressForm.full_name = addr.full_name || ''
+  addressForm.phone = addr.phone || ''
+  addressForm.full_address = addr.full_address || ''
+  addressForm.location_url = addr.location_url || ''
+  addressForm.isDefault = addr.isDefault || false
+}
+
+const setAsDefault = (addr) => {
+  userStore.setDefaultAddress(addr.id)
+  showSuccessToast(t('common.done'))
+}
+
+const deleteAddress = (addr) => {
+  showDialog({
+    message: t('profile.confirmDeleteAddress'),
+    showCancelButton: true,
+    confirmButtonColor: '#ee0a24',
+  }).then((res) => {
+    if (res === 'confirm') {
+      userStore.removeAddress(addr.id)
+      showSuccessToast(t('common.done'))
+    }
+  })
+}
+
 const handleSaveAddress = async () => {
+  const name = addressForm.full_name.trim()
+  const phone = addressForm.phone.trim()
+  const addr = addressForm.full_address.trim()
+  if (!name || !phone || !addr) {
+    showToast(t('profile.addressRequired'))
+    return
+  }
   saving.value = true
   try {
-    const updatedUser = await updateProfile({
-      full_name: addressForm.full_name.trim(),
-      address: addressForm.address.trim(),
-    })
-    userStore.userInfo = { ...userStore.userInfo, ...updatedUser }
+    if (editingAddressId.value === -1) {
+      userStore.addAddress(addressForm.label || t('profile.defaultAddress'), addr, phone, {
+        full_name: name,
+        location_url: addressForm.location_url || '',
+        isDefault: addressForm.isDefault || userStore.addresses.length === 0,
+      })
+    } else {
+      userStore.updateAddress(addressForm.id, {
+        label: addressForm.label,
+        full_name: name,
+        phone,
+        full_address: addr,
+        location_url: addressForm.location_url || '',
+        isDefault: addressForm.isDefault,
+      })
+    }
     hapticFeedback('success')
-    showSuccessToast(t('profile.updateSuccess'))
+    showSuccessToast(t('common.done'))
+    editingAddressId.value = null
     showAddressPopup.value = false
   } catch {
     showToast(t('profile.updateFailed'))

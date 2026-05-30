@@ -25,7 +25,7 @@ type OrderItemRequest struct {
 
 type OrderCreateRequest struct {
 	Items           []OrderItemRequest   `json:"items" binding:"required,min=1"`
-	MerchantID      *int64               `json:"merchant_id"`    // 管理员代下单时指定商户
+	MerchantID      *int64               `json:"merchant_id"` // 管理员代下单时指定商户
 	PaymentStatus   models.PaymentStatus `json:"payment_status"`
 	DeliveryAddress *string              `json:"delivery_address"`
 	DeliveryPhone   *string              `json:"delivery_phone"`
@@ -74,7 +74,6 @@ type OrderDetailResponse struct {
 	ScheduledAt     *string               `json:"scheduled_at"`
 	PickedAt        *string               `json:"picked_at"`
 	UnpaidDays      *int                  `json:"unpaid_days"`
-	DaysToBilling   *int                  `json:"days_to_billing"`
 }
 
 // writeStockLedger 写库存流水（在事务 tx 内调用，传 database.DB 也可）
@@ -128,11 +127,6 @@ func buildOrderResponse(order *models.Order, merchantName string) OrderDetailRes
 	}
 
 	unpaidDays := calcUnpaidDays(order)
-	var daysToBilling *int
-	if order.Merchant != nil && order.PaymentStatus == models.PaymentMonthly && order.Merchant.BillingCycleDays != nil {
-		d := *order.Merchant.BillingCycleDays
-		daysToBilling = &d
-	}
 
 	return OrderDetailResponse{
 		ID:              order.ID,
@@ -154,7 +148,6 @@ func buildOrderResponse(order *models.Order, merchantName string) OrderDetailRes
 		ScheduledAt:     scheduledAt,
 		PickedAt:        pickedAt,
 		UnpaidDays:      unpaidDays,
-		DaysToBilling:   daysToBilling,
 	}
 }
 
@@ -303,12 +296,6 @@ func CreateOrder(c *gin.Context) {
 		}
 	}
 
-	// 月结权限（按实际商户判断）
-	if req.PaymentStatus == models.PaymentMonthly && !targetMerchant.AllowCredit {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "该商户没有赊账权限"})
-		return
-	}
-
 	// 在事务中验证库存并扣减
 	var orderItemsData []struct {
 		ProductID    int64
@@ -367,14 +354,10 @@ func CreateOrder(c *gin.Context) {
 			// 确定单价
 			var unitPrice float64
 			switch purchaseMode {
-			case "piece":
-				if product.PricePerPieceUSD == nil {
-					return fmt.Errorf("商品 %s 暂未配置按件价格", product.Name)
-				}
-				unitPrice = *product.PricePerPieceUSD
-			case "package":
+			case "piece", "package":
+				// 统一使用最小单位单包售价
 				if product.PricePerPackageUSD == nil {
-					return fmt.Errorf("商品 %s 暂未配置按包价格", product.Name)
+					return fmt.Errorf("商品 %s 暂未配置单包售价", product.Name)
 				}
 				unitPrice = *product.PricePerPackageUSD
 			case "case":
@@ -468,11 +451,6 @@ func CreateOrder(c *gin.Context) {
 			if err := tx.Create(&item).Error; err != nil {
 				return err
 			}
-		}
-
-		// 月结累加（记在实际商户账上）
-		if req.PaymentStatus == models.PaymentMonthly {
-			tx.Model(targetMerchant).UpdateColumn("credit_limit", gorm.Expr("credit_limit + ?", totalUSD))
 		}
 
 		// 重新加载订单用于返回

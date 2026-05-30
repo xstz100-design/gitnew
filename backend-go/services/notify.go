@@ -535,8 +535,8 @@ func HandlePrivateMessage(db *gorm.DB, tgID int64, text string, firstName string
 		}
 		if BotLoginConfirmFunc != nil && BotLoginConfirmFunc(loginToken, newUser.ID) {
 			msg := fmt.Sprintf(
-				"🎉 欢迎加入<b>东方优选</b>！\n"+
-					"ស្វាគមន៍！\n\n"+
+				"🎉 欢迎加入<b>东方优选</b>！\n" +
+					"ស្វាគមន៍！\n\n" +
 					"已为您自动创建账号，点击下方按钮立即开始批发下单 👇",
 			)
 			go utils.SendTelegramMessage(token, chatIDStr, msg, shopBtn)
@@ -654,9 +654,8 @@ func botSendOrders(db *gorm.DB, user *models.User, token, chatIDStr string, shop
 		models.DeliveryCancelled:  "❌已取消",
 	}
 	psText := map[models.PaymentStatus]string{
-		models.PaymentUnpaid:  "未结款",
-		models.PaymentCash:    "现结",
-		models.PaymentMonthly: "赊账",
+		models.PaymentUnpaid: "未结款",
+		models.PaymentCash:   "现结",
 	}
 
 	if user.Role == models.RoleAdmin {

@@ -10,7 +10,6 @@
         <option value="">{{ $t('order.paymentStatus') }}</option>
         <option value="unpaid">{{ $t('order.unpaid') }}</option>
         <option value="cash">{{ $t('order.cash') }}</option>
-        <option value="monthly">{{ $t('order.monthly') }}</option>
       </select>
       <select v-model="filters.delivery_status" class="filter-select">
         <option value="">{{ $t('order.deliveryStatus') }}</option>
@@ -39,8 +38,6 @@
           <div class="ocard-tags">
             <van-tag :type="getPaymentTagType(row.payment_status)" size="medium">{{ getPaymentStatusText(row.payment_status) }}</van-tag>
             <van-tag :type="getDeliveryTagType(row.delivery_status)" size="medium">{{ getDeliveryStatusText(row.delivery_status) }}</van-tag>
-            <van-tag v-if="row.unpaid_days > 0" type="danger" size="medium">{{ $t('order.unpaidDaysShort', { days: row.unpaid_days }) }}</van-tag>
-            <van-tag v-if="row.days_to_billing != null && row.payment_status === 'monthly'" type="warning" size="medium">{{ $t('order.daysToBillingShort', { days: row.days_to_billing }) }}</van-tag>
           </div>
         </div>
         <div class="ocard-footer" @click.stop>
@@ -124,7 +121,6 @@
               <van-radio-group v-model="statusForm.payment_status" direction="horizontal">
                 <van-radio name="unpaid">{{ $t('order.unpaid') }}</van-radio>
                 <van-radio name="cash">{{ $t('order.cash') }}</van-radio>
-                <van-radio name="monthly">{{ $t('order.monthly') }}</van-radio>
               </van-radio-group>
             </template>
           </van-cell>
@@ -187,7 +183,7 @@ const paginatedOrders = computed(() => {
 const statusForm = reactive({ payment_status: 'unpaid', delivery_status: 'pending', scheduled_at: '', note: '' })
 
 const getPaymentTagType = (status) => {
-  const map = { unpaid: 'warning', cash: 'success', monthly: 'primary' }
+  const map = { unpaid: 'warning', cash: 'success' }
   return map[(status || '').toLowerCase()] || 'primary'
 }
 

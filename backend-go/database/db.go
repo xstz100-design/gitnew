@@ -54,7 +54,6 @@ func autoMigrate() {
 		&models.OrderItem{},
 		&models.Category{},
 		&models.Announcement{},
-		&models.MonthlyBill{},
 		&models.SystemSetting{},
 		&models.DailyMetric{},
 		&models.PhoneVerification{},

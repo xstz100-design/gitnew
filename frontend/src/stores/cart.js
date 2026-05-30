@@ -18,12 +18,9 @@ export const useCartStore = defineStore(
     })
 
     function resolvePriceByMode(product, purchaseMode = 'default') {
-      if (purchaseMode === 'piece' && product.price_per_piece_usd) {
-        return Number(product.price_per_piece_usd)
-      }
-      if (purchaseMode === 'package') {
+      if (purchaseMode === 'piece' || purchaseMode === 'package') {
+        // 统一使用最小单位单包售价
         if (product.price_per_package_usd) return Number(product.price_per_package_usd)
-        if (product.pieces_per_package) return Number(product.price_usd) * Number(product.pieces_per_package)
       }
       if (purchaseMode === 'case') {
         if (product.price_per_case_usd) return Number(product.price_per_case_usd)

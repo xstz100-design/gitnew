@@ -149,27 +149,21 @@ type TelegramBindRequest struct {
 }
 
 type UserCreateRequest struct {
-	FullName         string          `json:"full_name" binding:"required"`
-	Role             models.UserRole `json:"role"`
-	Phone            *string         `json:"phone"`
-	Address          *string         `json:"address"`
-	LocationURL      *string         `json:"location_url"`
-	CreditLimit      float64         `json:"credit_limit"`
-	BillingCycleDays *int            `json:"billing_cycle_days"`
-	AllowCredit      bool            `json:"allow_credit"`
+	FullName    string          `json:"full_name" binding:"required"`
+	Role        models.UserRole `json:"role"`
+	Phone       *string         `json:"phone"`
+	Address     *string         `json:"address"`
+	LocationURL *string         `json:"location_url"`
 }
 
 type UserUpdateRequest struct {
-	FullName         *string  `json:"full_name"`
-	Phone            *string  `json:"phone"`
-	Address          *string  `json:"address"`
-	LocationURL      *string  `json:"location_url"`
-	StorePhoto       *string  `json:"store_photo"`
-	CreditLimit      *float64 `json:"credit_limit"`
-	BillingCycleDays *int     `json:"billing_cycle_days"`
-	AllowCredit      *bool    `json:"allow_credit"`
-	NotifyEnabled    *bool    `json:"notify_enabled"`
-	IsActive         *bool    `json:"is_active"`
+	FullName      *string `json:"full_name"`
+	Phone         *string `json:"phone"`
+	Address       *string `json:"address"`
+	LocationURL   *string `json:"location_url"`
+	StorePhoto    *string `json:"store_photo"`
+	NotifyEnabled *bool   `json:"notify_enabled"`
+	IsActive      *bool   `json:"is_active"`
 }
 
 type PasswordChangeRequest struct {
@@ -193,9 +187,6 @@ type UserResponse struct {
 	Role               models.UserRole       `json:"role"`
 	Phone              *string               `json:"phone"`
 	Address            *string               `json:"address"`
-	CreditLimit        float64               `json:"credit_limit"`
-	BillingCycleDays   *int                  `json:"billing_cycle_days"`
-	AllowCredit        bool                  `json:"allow_credit"`
 	LocationURL        *string               `json:"location_url"`
 	StorePhoto         *string               `json:"store_photo"`
 	TelegramID         *int64                `json:"telegram_id"`
@@ -233,9 +224,6 @@ func buildUserResponse(u *models.User) UserResponse {
 		Role:               u.Role,
 		Phone:              u.Phone,
 		Address:            u.Address,
-		CreditLimit:        u.CreditLimit,
-		BillingCycleDays:   u.BillingCycleDays,
-		AllowCredit:        u.AllowCredit,
 		LocationURL:        u.LocationURL,
 		StorePhoto:         u.StorePhoto,
 		TelegramID:         u.TelegramID,
@@ -573,9 +561,6 @@ func Register(c *gin.Context) {
 		Phone:              req.Phone,
 		Address:            req.Address,
 		LocationURL:        req.LocationURL,
-		CreditLimit:        req.CreditLimit,
-		BillingCycleDays:   req.BillingCycleDays,
-		AllowCredit:        req.AllowCredit,
 		ApprovalStatus:     models.ApprovalApproved,
 		MustChangePassword: true,
 		IsActive:           true,
@@ -635,15 +620,6 @@ func UpdateUser(c *gin.Context) {
 	}
 	if req.StorePhoto != nil {
 		updates["store_photo"] = *req.StorePhoto
-	}
-	if req.CreditLimit != nil {
-		updates["credit_limit"] = *req.CreditLimit
-	}
-	if req.BillingCycleDays != nil {
-		updates["billing_cycle_days"] = *req.BillingCycleDays
-	}
-	if req.AllowCredit != nil {
-		updates["allow_credit"] = *req.AllowCredit
 	}
 	if req.NotifyEnabled != nil {
 		updates["notify_enabled"] = *req.NotifyEnabled

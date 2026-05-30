@@ -286,13 +286,12 @@
           <!-- ③ 包装规格 -->
           <van-collapse-item :title="$t('productForm.sectionPacking')" name="packing">
             <van-cell-group>
-              <div class="dim-group-title">{{ $t('productForm.singlePackTitle') }}</div>
+              <div class="dim-group-title">{{ $t('productForm.minPackUnitTitle') }}</div>
               <van-field v-model="form.unit_name" :label="$t('productForm.unitLabel')" :placeholder="$t('product.unitNamePlaceholder')" />
-              <van-field v-model="form.price_per_piece_usd" type="number" :label="$t('productForm.pricePerPiece')" placeholder="0.00" />
+              <van-field v-model="form.price_per_package_usd" type="number" :label="$t('productForm.minPackPrice')" placeholder="0.00" />
               <div class="dim-group-title">{{ $t('productForm.bulkPackTitle') }}</div>
               <van-field v-model="form.pack_name" :label="$t('productForm.packLabel')" :placeholder="$t('product.packNamePlaceholder')" />
               <van-field v-model="form.unit_per_inner_pack" type="number" :label="$t('productForm.unitPerInnerPack')" placeholder="0" />
-              <van-field v-model="form.price_per_package_usd" type="number" :label="$t('productForm.pricePerPackage')" placeholder="0.00" />
               <div class="dim-group-title">{{ $t('productForm.caseTitle') }}</div>
               <van-field v-model="form.inner_pack_per_case" type="number" :label="$t('productForm.innerPackPerCase')" placeholder="0" />
               <van-field v-model="form.unit_per_case" type="number" :label="$t('productForm.unitPerCase')" placeholder="0" />
@@ -609,7 +608,7 @@ const form = reactive({
   inner_pack_per_case: '', unit_per_inner_pack: '', unit_per_case: '', pieces_per_package: '',
   cost_per_case: '', dc_percent: '', net_cost_per_case: '', net_cost_per_unit: '',
   price_incl_vat: '', price_excl_vat: '',
-  price_per_piece_usd: '', price_per_package_usd: '', price_per_case_usd: '',
+  price_per_package_usd: '', price_per_case_usd: '',
   unit_width_cm: '', unit_length_cm: '', unit_height_cm: '', unit_weight_kg: '',
   pack_width_cm: '', pack_length_cm: '', pack_height_cm: '', pack_weight_kg: '',
   case_width_cm: '', case_length_cm: '', case_height_cm: '', case_weight_kg: '',
@@ -674,7 +673,7 @@ const resetForm = () => {
     inner_pack_per_case: '', unit_per_inner_pack: '', unit_per_case: '', pieces_per_package: '',
     cost_per_case: '', dc_percent: '', net_cost_per_case: '', net_cost_per_unit: '',
     price_incl_vat: '', price_excl_vat: '',
-    price_per_piece_usd: '', price_per_package_usd: '', price_per_case_usd: '',
+    price_per_package_usd: '', price_per_case_usd: '',
     unit_width_cm: '', unit_length_cm: '', unit_height_cm: '', unit_weight_kg: '',
     pack_width_cm: '', pack_length_cm: '', pack_height_cm: '', pack_weight_kg: '',
     case_width_cm: '', case_length_cm: '', case_height_cm: '', case_weight_kg: '',
@@ -713,7 +712,7 @@ const handleEdit = (row) => {
     expiry_date: row.expiry_date ? row.expiry_date.substring(0, 10) : null,
     sort_order: row.sort_order || 0,
     is_active: row.is_active !== false, is_featured: row.is_featured || false, is_discounted: row.is_discounted || false,
-    price_usd: toStr(row.price_usd), price_per_piece_usd: toStr(row.price_per_piece_usd),
+    price_usd: toStr(row.price_usd),
     price_per_package_usd: toStr(row.price_per_package_usd), price_per_case_usd: toStr(row.price_per_case_usd),
     unit_per_inner_pack: toStr(row.unit_per_inner_pack || row.pieces_per_package),
     pieces_per_package: toStr(row.unit_per_inner_pack || row.pieces_per_package),
@@ -744,7 +743,7 @@ const handleSubmit = async () => {
     delete payload.id
     if (payload.unit_per_inner_pack) payload.pieces_per_package = payload.unit_per_inner_pack
     const floatFields = [
-      'price_usd', 'price_per_piece_usd', 'price_per_package_usd',
+      'price_usd', 'price_per_package_usd',
       'unit_weight_value', 'pack_size', 'gp_percent',
       'cost_per_case', 'dc_percent', 'net_cost_per_case', 'net_cost_per_unit', 'price_incl_vat', 'price_excl_vat',
       'unit_width_cm', 'unit_length_cm', 'unit_height_cm', 'unit_weight_kg',

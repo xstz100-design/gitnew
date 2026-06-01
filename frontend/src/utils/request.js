@@ -36,8 +36,10 @@ request.interceptors.response.use(
 
     if (error.response?.status === 401 && !error.config?.url?.includes('/api/auth/login')) {
       useUserStore().logout()
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login')
+      // 只在管理员路由才强制跳登录，移动端（/m/*）允许游客浏览
+      const isAdminPath = window.location.pathname.startsWith('/admin')
+      if (isAdminPath && window.location.pathname !== '/admin/login') {
+        window.location.assign('/admin/login')
       }
     }
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="mobile-shop">
+  <div class="mobile-shop" :class="{ 'has-cart': cartStore.totalCount > 0 }">
     <!-- 公告栏（紧凑） -->
     <van-notice-bar
       v-if="notices.length > 0"
@@ -432,14 +432,15 @@ const goToCart = () => {
 
 // 回到顶部
 const showBackToTop = ref(false)
+let scrollEl = null
 
 const handleScroll = () => {
-  showBackToTop.value = window.scrollY > 300
+  showBackToTop.value = (scrollEl?.scrollTop ?? 0) > 300
 }
 
 const scrollToTop = () => {
   hapticFeedback('light')
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  scrollEl?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 onMounted(async () => {
@@ -450,21 +451,25 @@ onMounted(async () => {
     products.value.forEach(p => { if (p.category) cats.add(p.category) })
     cats.forEach(c => categories.value.push({ id: c, name: c }))
   }
-  // 监听滚动
-  window.addEventListener('scroll', handleScroll, { passive: true })
+  // 监听父容器滚动（不是 window）
+  scrollEl = document.querySelector('.mobile-content')
+  scrollEl?.addEventListener('scroll', handleScroll, { passive: true })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
+  scrollEl?.removeEventListener('scroll', handleScroll)
 })
 </script>
 
 <style scoped>
+/* tabbar fixed: padding 需留出 tabbar + 浏览器底部空间 */
 .mobile-shop {
-  min-height: var(--tg-viewport-height, 100vh);
+  min-height: 100%;
   background: #f5f5f7;
-  padding-bottom: calc(60px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  overflow: visible;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+}
+.mobile-shop.has-cart {
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ===== 搜索栏 ===== */
@@ -796,7 +801,7 @@ onUnmounted(() => {
 /* ===== 底部结算栏 ===== */
 .checkout-bar {
   position: fixed;
-  bottom: calc(50px + env(safe-area-inset-bottom, 0px));
+  bottom: env(safe-area-inset-bottom, 0px);
   left: 0;
   right: 0;
   z-index: 100;
@@ -939,7 +944,7 @@ onUnmounted(() => {
 .back-top-btn {
   position: fixed;
   right: 16px;
-  bottom: 162px;
+  bottom: env(safe-area-inset-bottom, 0px);
   z-index: 99;
   width: 40px;
   height: 40px;
@@ -960,11 +965,14 @@ onUnmounted(() => {
 /* ===== Banner 轮播 ===== */
 .banner-wrap {
   width: 100%;
+  height: 160px;
   background: #f5f5f5;
   overflow: hidden;
+  flex-shrink: 0;
 }
-:deep(.banner-wrap .van-swipe) {
-  height: 160px;
+:deep(.banner-wrap .van-swipe),
+:deep(.banner-wrap .van-swipe__track) {
+  height: 160px !important;
 }
 .banner-img {
   width: 100%;

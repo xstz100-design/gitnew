@@ -18,6 +18,17 @@ export function login(username, password) {
 }
 
 /**
+ * 游客自动登录（浏览器内，无需交互）
+ */
+export function guestLogin(deviceId) {
+  return request({
+    url: '/api/auth/guest',
+    method: 'post',
+    data: { device_id: deviceId },
+  })
+}
+
+/**
  * Telegram Mini App 免登录
  */
 export function telegramAuth(initData) {

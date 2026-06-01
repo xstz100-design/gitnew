@@ -1,7 +1,7 @@
 <template>
   <div class="mobile-profile">
     <van-nav-bar :title="$t('profile.title')" fixed placeholder />
-    
+
     <!-- 审核状态横幅 -->
     <div v-if="userStore.isMerchant && !userStore.isApproved" class="status-banner">
       <div v-if="userStore.approvalStatus === 'pending'" class="banner pending">
@@ -29,7 +29,7 @@
         <van-icon name="user-o" size="32" color="#fff" />
       </div>
       <div class="user-info">
-        <div class="user-name">{{ userStore.userInfo?.full_name || $t('profile.notLoggedIn') }}</div>
+        <div class="user-name">{{ guestDisplayName }}</div>
         <div class="user-phone">{{ userStore.userInfo?.phone || '' }}</div>
       </div>
     </div>
@@ -162,26 +162,9 @@
       </div>
     </van-popup>
 
-    <!-- 资料未完成时显示提交按钮 -->
-    <div v-if="userStore.isMerchant && !userStore.profileCompleted" class="submit-profile-section">
-      <van-button type="primary" block round @click="submitProfileForReview" :loading="submittingProfile">
-        {{ $t('profile.submitForReview') }}
-      </van-button>
-      <p class="submit-hint">{{ $t('profile.submitHint') }}</p>
-    </div>
-
-    <!-- 已提交待审核时显示刷新状态按钮 -->
-    <div v-else-if="userStore.isMerchant && userStore.approvalStatus === 'pending'" class="submit-profile-section">
-      <van-button type="primary" block round @click="checkApprovalStatus" :loading="checkingStatus" icon="replay">
-        {{ $t('profile.checkStatus') }}
-      </van-button>
-    </div>
-
-    <!-- 被拒绝时显示重新提交 -->
-    <div v-else-if="userStore.isMerchant && userStore.approvalStatus === 'rejected'" class="submit-profile-section">
-      <van-button type="warning" block round @click="submitProfileForReview" :loading="submittingProfile">
-        {{ $t('profile.resubmitForReview') }}
-      </van-button>
+    <!-- 下单提示 -->
+    <div v-if="userStore.isMerchant" class="submit-profile-section">
+      <p class="submit-hint">下单前注意请确保店铺名称、电话、地址均已填写</p>
     </div>
     
     <van-cell-group inset :title="$t('profile.accountSecurity')" v-if="userStore.isAdmin">
@@ -377,6 +360,17 @@ const route = useRoute()
 const userStore = useUserStore()
 const cartStore = useCartStore()
 
+// 游客显示名：取用户名末 6 位作编号，普通用户显示全名
+const guestDisplayName = computed(() => {
+  const name = userStore.userInfo?.full_name
+  const username = userStore.userInfo?.username || ''
+  if (username.startsWith('guest_')) {
+    const shortId = username.slice(-6).toUpperCase()
+    return `游客 #${shortId}`
+  }
+  return name || t('profile.notLoggedIn')
+})
+
 const showPasswordDialog = ref(false)
 const showMapPicker = ref(false)
 const locating = ref(false)
@@ -550,7 +544,6 @@ const loadGoogleMapsScript = () => {
   })
 }
 
-// 将地图中心移到指定坐标并打上标记
 const placeMapMarker = (latlng) => {
   if (!googleMapInstance) return
   if (googleMapMarker) googleMapMarker.setMap(null)
@@ -561,7 +554,6 @@ const placeMapMarker = (latlng) => {
   pickedLocationUrl.value = `https://maps.google.com/?q=${lat},${lng}`
 }
 
-// 定位当前位置按钮
 const locateCurrentPosition = () => {
   if (!navigator.geolocation) {
     showToast(t('profile.geolocationUnsupported'))
@@ -597,11 +589,9 @@ const openLocationPicker = async () => {
     const container = mapContainerRef.value
     if (!container || !window.google?.maps) return
 
-    // Phnom Penh default center
     const defaultCenter = { lat: 11.5564, lng: 104.9282 }
     let initCenter = defaultCenter
 
-    // If existing URL has coordinates, center there
     const existing = pickedLocationUrl.value
     if (existing) {
       const m = existing.match(/[?&]q=([\-\d.]+),([\-\d.]+)/) || existing.match(/@([\-\d.]+),([\-\d.]+)/)
@@ -614,14 +604,12 @@ const openLocationPicker = async () => {
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
-      // greedy：让地图独占单/双指手势，支持在弹窗内双指缩放和拖动
       gestureHandling: 'greedy',
     })
 
     if (existing && initCenter !== defaultCenter) {
       googleMapMarker = new window.google.maps.Marker({ position: initCenter, map: googleMapInstance })
     } else if (!existing) {
-      // 没有已存坐标时，尝试自动定位
       if (navigator.geolocation) {
         locating.value = true
         navigator.geolocation.getCurrentPosition(

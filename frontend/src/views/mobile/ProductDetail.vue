@@ -350,7 +350,7 @@ onMounted(async () => {
 .pd-page {
   min-height: 100%;
   background: #fff;
-  padding-bottom: calc(80px + 50px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px));
 }
 
 .pd-loading {
@@ -565,9 +565,7 @@ onMounted(async () => {
 /* ── 底部操作栏（坐在 tabbar 上方） ── */
 .pd-footer {
   position: fixed;
-  /* tabbar 高度约 50px，van-tabbar 在 MobileLayout 内是 relative 定位，
-     但 fixed 元素以视口为基准，所以 bottom=50px 即可贴住 tabbar 上沿 */
-  bottom: calc(50px + env(safe-area-inset-bottom, 0px));
+  bottom: env(safe-area-inset-bottom, 0px);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;

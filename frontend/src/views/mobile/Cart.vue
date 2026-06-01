@@ -295,13 +295,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { showSuccessToast, showToast, showDialog } from 'vant'
 import { useCartStore } from '@/stores/cart'
 import { useUserStore } from '@/stores/user'
-import { createOrder, estimateDeliveryFeeByAddress, getContactInfo } from '@/api'
+import { createOrder, estimateDeliveryFee, estimateDeliveryFeeByAddress, getContactInfo } from '@/api'
 import { formatKHR, usdToKhr, khrLabel } from '@/utils/format'
 import { hapticFeedback } from '@/utils/device'
 
@@ -352,6 +352,19 @@ const copyOrderInfo = () => {
 }
 
 const checkedItems = ref(cartStore.items.map(item => item.id))
+
+// keep-alive 重新激活时重置为全选
+onActivated(() => {
+  checkedItems.value = cartStore.items.map(item => item.id)
+})
+
+// 购物车新增商品时自动勾选
+watch(() => cartStore.items.length, () => {
+  const checked = new Set(checkedItems.value)
+  cartStore.items.forEach(item => {
+    if (!checked.has(item.id)) checkedItems.value.push(item.id)
+  })
+})
 const checkAll = computed({
   get: () => cartStore.items.length > 0 && checkedItems.value.length === cartStore.items.length,
   set: (val) => { checkedItems.value = val ? cartStore.items.map(item => item.id) : [] },
@@ -404,18 +417,41 @@ const selectAddress = (addr) => {
 const deliveryFee = ref(null)
 const estimatingFee = ref(false)
 
+// 从 Google Maps 分享链接提取坐标
+const extractCoordsFromUrl = (url) => {
+  if (!url) return null
+  const m = url.match(/[?&]q=([-\d.]+),([-\d.]+)/) || url.match(/@([-\d.]+),([-\d.]+)/)
+  return m ? `${m[1]},${m[2]}` : null
+}
+
 const autoEstimateFromAddress = async (addr) => {
-  if (!addr || !addr.distance_km) {
-    deliveryFee.value = null
-    return
-  }
+  if (!addr) { deliveryFee.value = null; return }
+
   estimatingFee.value = true
   try {
-    const res = await estimateDeliveryFeeByAddress('', addr.full_address || addr.full_address_kh || '')
-    if (res.warning) return
-    deliveryFee.value = res.delivery_fee_usd ?? null
+    // 优先：从 location_url 提取坐标 → 传坐标给后端用 Haversine（无需 Google Maps API）
+    const coords = extractCoordsFromUrl(addr.location_url)
+    if (coords) {
+      const res = await estimateDeliveryFeeByAddress('', coords)
+      if (!res.warning) {
+        deliveryFee.value = res.delivery_fee_usd ?? null
+        // 更新本地地址的 distance_km 供下次显示
+        if (res.distance_km > 0 && (!addr.distance_km || addr.distance_km === 0)) {
+          userStore.updateAddress(addr.id, { distance_km: res.distance_km })
+        }
+        return
+      }
+    }
+    // 备用：已有 distance_km，直接用简单接口计算费用
+    if (addr.distance_km > 0) {
+      const res = await estimateDeliveryFee(addr.distance_km)
+      deliveryFee.value = res.delivery_fee_usd ?? null
+      return
+    }
+    // 都没有，无法估算
+    deliveryFee.value = null
   } catch {
-    // 静默失败
+    deliveryFee.value = null
   } finally {
     estimatingFee.value = false
   }
@@ -595,15 +631,15 @@ const handlePrimaryAction = async () => {
 
 <style scoped>
 .mobile-cart {
-  min-height: var(--tg-viewport-height, 100vh);
+  min-height: 100%;
   background: #f5f5f5;
-  padding-bottom: calc(100px + var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
 }
 
-/* van-submit-bar 与底部导航栏无缝衔接 */
+/* van-submit-bar 贴在 tabbar 上方 */
 :deep(.van-submit-bar) {
-  bottom: calc(var(--van-tabbar-height, 50px) + env(safe-area-inset-bottom, 0px));
-  box-shadow: none;
+  bottom: env(safe-area-inset-bottom, 0px) !important;
+  box-shadow: none !important;
   border-top: 1px solid #f0f0f0;
 }
 :deep(.van-submit-bar__tip) {

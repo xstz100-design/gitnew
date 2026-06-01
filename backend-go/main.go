@@ -110,6 +110,7 @@ func main() {
 		// Bot 深链登录
 		authPub.POST("/bot-login/create", handlers.BotLoginCreate)
 		authPub.GET("/bot-login/verify", handlers.BotLoginVerify)
+		authPub.POST("/guest", handlers.GuestLogin)
 	}
 
 	// ── Auth（需登录）
@@ -148,12 +149,16 @@ func main() {
 		authSuper.POST("/users/:id/super-admin", handlers.SetSuperAdminPost)
 	}
 
-	// ── 商品
+	// ── 商品（公开浏览，无需登录）
+	productsPub := api.Group("/products")
+	{
+		productsPub.GET("", handlers.ListProducts)
+		productsPub.GET("/:id", handlers.GetProduct)
+	}
+	// 需登录（条码查询）
 	productsAuth := api.Group("/products", middleware.Auth())
 	{
-		productsAuth.GET("", handlers.ListProducts)
 		productsAuth.GET("/barcode/:barcode", handlers.GetProductByBarcode)
-		productsAuth.GET("/:id", handlers.GetProduct)
 	}
 	productsAdmin := api.Group("/products", middleware.Auth(), middleware.RequireAdmin())
 	{

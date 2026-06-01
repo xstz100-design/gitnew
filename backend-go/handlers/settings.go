@@ -181,12 +181,14 @@ func EstimateDeliveryFeeByAddress(c *gin.Context) {
 		return
 	}
 
-	// 如果未传起点，使用仓库坐标
+	// 如果未传起点，使用仓库坐标；未配置时默认金边市中心
 	if req.Origin == "" {
 		lat := services.GetWarehouseLat()
 		lng := services.GetWarehouseLng()
 		if lat != "" && lng != "" {
 			req.Origin = lat + "," + lng
+		} else {
+			req.Origin = "11.5564,104.9282" // 金边默认坐标
 		}
 	}
 

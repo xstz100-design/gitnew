@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, getCurrentUser, telegramAuth as apiTelegramAuth } from '@/api'
+import { login as apiLogin, getCurrentUser, telegramAuth as apiTelegramAuth, guestLogin as apiGuestLogin } from '@/api'
 
 let addressIdCounter = Date.now()
 
@@ -81,6 +81,19 @@ export const useUserStore = defineStore(
 
     async function telegramLogin(initData) {
       const data = await apiTelegramAuth(initData)
+      token.value = data.access_token
+      userInfo.value = data.user
+      return data
+    }
+
+    async function guestLogin() {
+      // 获取或生成本地设备 ID（持久化到 localStorage）
+      let deviceId = localStorage.getItem('_guest_device_id')
+      if (!deviceId) {
+        deviceId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)
+        localStorage.setItem('_guest_device_id', deviceId)
+      }
+      const data = await apiGuestLogin(deviceId)
       token.value = data.access_token
       userInfo.value = data.user
       return data
@@ -193,6 +206,7 @@ export const useUserStore = defineStore(
       // auth
       login,
       telegramLogin,
+      guestLogin,
       logout,
       fetchUserInfo,
       // addresses

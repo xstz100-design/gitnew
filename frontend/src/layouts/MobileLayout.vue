@@ -19,8 +19,8 @@
         </router-view>
       </div>
 
-      <!-- 底部导航栏（始终固定在底部） -->
-      <van-tabbar v-model="activeTab" @change="handleTabChange" :fixed="false" :placeholder="false">
+      <!-- fixed 定位：无 transform 干扰，bottom:0 = 视口底部（已排除浏览器导航栏） -->
+      <van-tabbar v-model="activeTab" @change="handleTabChange" :fixed="true" :placeholder="true" safe-area-inset-bottom>
         <van-tabbar-item icon="shop-o" to="/m/shop">{{ $t('nav.shop') }}</van-tabbar-item>
         <van-tabbar-item icon="shopping-cart-o" :badge="cartStore.totalCount || ''">
           {{ $t('nav.cart') }}
@@ -46,13 +46,15 @@ const cartStore = useCartStore()
 
 const activeTab = ref(0)
 
-// 只要 window.Telegram.WebApp 对象存在就算 Telegram 环境
-// 不用 initData（可能为空字符串）做判断
-const isTgContext = ref(typeof window !== 'undefined' && !!window.Telegram?.WebApp)
+// 真正的 Telegram Mini App：必须有 initData（内置浏览器没有 initData）
+const isTgContext = ref(
+  typeof window !== 'undefined' &&
+  !!window.Telegram?.WebApp?.initData &&
+  window.Telegram.WebApp.initData.length > 0
+)
 
-// Telegram 标题栏/浮动按钮占用的顶部高度
-// 初始值 72px（状态栏~24px + Telegram操作栏~48px），onMounted 后用 API 精确值替换
-const tgTopPadding = ref(isTgContext.value && window.innerWidth < 600 ? 72 : 0)
+// Telegram 顶部安全区高度，初始为 0，由 API 精确赋值
+const tgTopPadding = ref(0)
 
 onMounted(() => {
   document.body.classList.add('mobile-layout-active')
@@ -77,9 +79,7 @@ onMounted(() => {
     }
     const content = tg.contentSafeAreaInset?.top ?? 0
     const safe = tg.safeAreaInset?.top ?? 0
-    // 若 API 返回 0（旧版 Telegram），保持 72px 兜底值不变
-    const apiVal = content + safe
-    if (apiVal > 0) tgTopPadding.value = apiVal
+    tgTopPadding.value = content + safe
   }
   updatePadding()
   // 窗口大小/方向变化时重新计算
@@ -109,28 +109,27 @@ onUnmounted(() => {
 <style scoped>
 /* ── 外层容器 ── */
 .desktop-wrapper {
-  height: 100vh;
-  height: 100dvh;
+  height: var(--real-vh, 100dvh);
   background: #f0f2f5;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  overflow: hidden;
+  /* 不用 overflow:hidden，避免裁掉视口级 fixed 元素（tabbar 等） */
 }
 
 /* ── 主容器（所有设备） ── */
+/* 注意：
+   1. 不加 transform，否则 position:fixed 子元素会以此为基准而非视口
+   2. 不在全局设 overflow:hidden，否则 position:fixed 子元素（tabbar 等）会被裁剪。
+      桌面端需要圆角裁剪时在相应 media query 中单独设置。 */
 .mobile-layout {
   width: 100%;
   max-width: 520px;
-  height: 100vh;
-  height: 100dvh;
+  height: var(--real-vh, 100dvh);
   background: #f5f5f5;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
-  /* 为 position:fixed 子元素建立包含块，防止它们在桌面端逃出 520px 框架 */
-  transform: translateZ(0);
 }
 
 /* ── 全局顶部 Logo 栏 ── */
@@ -155,6 +154,7 @@ onUnmounted(() => {
 /* ── 内容滚动区 ── */
 .mobile-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
@@ -175,8 +175,7 @@ onUnmounted(() => {
   }
   .mobile-layout.tg-frame-mode {
     max-width: 520px;
-    height: calc(100vh - 20px);
-    height: calc(100dvh - 20px);
+    height: calc(var(--real-vh, 100dvh) - 20px);
     margin-top: 20px;
     border-radius: 32px 32px 0 0;
     overflow: hidden;
@@ -194,10 +193,10 @@ onUnmounted(() => {
   }
   .mobile-layout:not(.tg-frame-mode) {
     max-width: 520px;
-    height: calc(100vh - 20px);
-    height: calc(100dvh - 20px);
+    height: calc(var(--real-vh, 100dvh) - 20px);
     margin-top: 20px;
     border-radius: 32px 32px 0 0;
+    overflow: hidden;
     box-shadow:
       0 0 0 6px rgba(255, 255, 255, 0.07),
       0 0 0 9px rgba(255, 255, 255, 0.04),
@@ -212,11 +211,10 @@ onUnmounted(() => {
 
 /* ── 底部导航栏 ── */
 :deep(.van-tabbar) {
-  flex-shrink: 0;
-  width: 100%;
-  position: relative;
   background: #fff !important;
   border-top: 1px solid #f0f0f0;
+  /* 保证在 mobile-content (z-index:2) 之上绘制，避免被内容区覆盖 */
+  z-index: 10 !important;
 }
 :deep(.van-tabbar-item) {
   color: #aaa !important;
@@ -233,6 +231,64 @@ onUnmounted(() => {
 
 <!-- 非 scoped：桌面端将 teleport="body" 的 Vant 弹窗约束在 520px 移动容器内 -->
 <style>
+/* ── iOS 浏览器工具栏补偿 ── */
+/* iOS Chrome/Safari 上 position:fixed 相对 layout viewport 定位，
+   浏览器工具栏显示时会被遮挡。--browser-nav-offset 动态补偿工具栏高度 */
+@media (max-width: 599px) {
+  body.mobile-layout-active .van-tabbar--fixed,
+  body.mobile-layout-active .checkout-bar,
+  body.mobile-layout-active .back-top-btn,
+  body.mobile-layout-active .pd-footer,
+  body.mobile-layout-active .van-submit-bar--fixed {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+  }
+}
+
+/* 桌面端把 position:fixed 的元素约束在 520px 框内 */
+@media (min-width: 600px) {
+  /* tabbar */
+  body.mobile-layout-active .van-tabbar--fixed {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+    transform: translateX(-50%) !important;
+  }
+  /* 结算栏（Shop.vue checkout-bar） */
+  body.mobile-layout-active .checkout-bar {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+    transform: translateX(-50%) !important;
+  }
+  /* 回到顶部按钮 */
+  body.mobile-layout-active .back-top-btn {
+    right: calc(50% - 244px) !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+  }
+  /* ProductDetail 底部操作栏 */
+  body.mobile-layout-active .pd-footer {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+    transform: translateX(-50%) !important;
+  }
+  /* Cart 提交栏 */
+  body.mobile-layout-active .van-submit-bar--fixed {
+    left: 50% !important;
+    right: auto !important;
+    max-width: 520px !important;
+    width: 520px !important;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--browser-nav-offset, 0px)) !important;
+    transform: translateX(-50%) !important;
+  }
+}
+
 @media (min-width: 600px) {
   body.mobile-layout-active .van-popup--bottom,
   body.mobile-layout-active .van-popup--top {

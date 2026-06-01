@@ -1441,3 +1441,53 @@ func TelegramContactLink(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, TokenResponse{AccessToken: jwtToken, TokenType: "bearer", User: buildUserResponse(&user)})
 }
+
+// ─────────────────── 游客自动登录 ───────────────────
+
+// POST /api/auth/guest
+// 浏览器用户传入本地 device_id，自动创建/复用游客账号，无需任何交互
+func GuestLogin(c *gin.Context) {
+	var req struct {
+		DeviceID string `json:"device_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.DeviceID) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "无效的 device_id"})
+		return
+	}
+	deviceID := req.DeviceID
+	if len(deviceID) > 36 {
+		deviceID = deviceID[:36]
+	}
+	username := "guest_" + deviceID
+
+	var user models.User
+	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		user = models.User{
+			Username:           username,
+			HashedPassword:     "",
+			FullName:           "游客",
+			Role:               models.RoleMerchant,
+			ApprovalStatus:     models.ApprovalApproved,
+			IsActive:           true,
+			MustChangePassword: false,
+			NotifyEnabled:      false,
+			CreatedAt:          models.NowCambodia(),
+		}
+		if err2 := database.DB.Create(&user).Error; err2 != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "创建游客账号失败"})
+			return
+		}
+	}
+
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "账号已被禁用"})
+		return
+	}
+
+	token, err := utils.CreateAccessToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "生成 Token 失败"})
+		return
+	}
+	c.JSON(http.StatusOK, TokenResponse{AccessToken: token, TokenType: "bearer", User: buildUserResponse(&user)})
+}

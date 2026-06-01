@@ -6,13 +6,8 @@ import { isTelegramMiniApp, getInitData } from '@/utils/telegram'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // ── 用户端登录（Telegram 登录，无管理员入口）
-    {
-      path: '/login',
-      name: 'Login',
-      component: () => import('@/views/Login.vue'),
-      meta: { requiresAuth: false },
-    },
+    // /login 已废弃，直接重定向到商城
+    { path: '/login', redirect: '/m/shop' },
     // ── 管理员后台独立登录
     {
       path: '/admin/login',
@@ -73,12 +68,6 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // ── 已登录访问 /login → 去移动端首页
-  if (to.path === '/login' && userStore.isLoggedIn) {
-    next('/m/shop')
-    return
-  }
-
   // ── 已登录访问 /admin/login → 去管理后台
   if (to.meta.adminLoginPage && userStore.isLoggedIn) {
     if (userStore.isAdmin) {
@@ -87,17 +76,6 @@ router.beforeEach(async (to, from, next) => {
       next('/m/shop')
     }
     return
-  }
-
-  // ── Telegram 内访问 /login → 自动登录后去用户端
-  if (to.path === '/login' && inTelegram && !userStore.isLoggedIn) {
-    try {
-      await userStore.telegramLogin(getInitData())
-      next('/m/shop')
-      return
-    } catch {
-      // 登录失败，继续显示登录页
-    }
   }
 
   next()

@@ -36,6 +36,32 @@ app.use(Vant)
 
 initBrowserViewportVars()
 
+// --real-vh: 始终用 visualViewport.height（浏览器所有 UI 都已排除的可见高度）
+// 布局高度 = 可见高度，tabbar 作为 flex 末尾自然贴底，无需任何 bottom 偏移
+function syncViewportVars() {
+  const h = Math.round(window.visualViewport ? window.visualViewport.height : window.innerHeight)
+  document.documentElement.style.setProperty('--real-vh', h + 'px')
+}
+syncViewportVars()
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewportVars, { passive: true })
+}
+window.addEventListener('resize', syncViewportVars, { passive: true })
+
+// --browser-nav-offset: iOS 浏览器工具栏高度
+// position:fixed 在 iOS 上相对 layout viewport 定位，工具栏显示时元素被遮挡
+// 用 visualViewport 计算实际补偿值
+function syncBrowserNavOffset() {
+  const offset = window.visualViewport
+    ? Math.max(0, window.innerHeight - window.visualViewport.height)
+    : 0
+  document.documentElement.style.setProperty('--browser-nav-offset', offset + 'px')
+}
+syncBrowserNavOffset()
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncBrowserNavOffset, { passive: true })
+}
+
 // Telegram Mini App 自动登录
 async function bootstrapTelegram() {
   if (!isTelegramMiniApp()) return false
@@ -71,13 +97,27 @@ async function syncTelegramEntryRoute() {
 
   // 管理员和商户在 Telegram miniapp 中均使用移动端界面
   if (userStore.isLoggedIn) {
-    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/admin')) {
+    if (currentPath === '/' || currentPath.startsWith('/admin')) {
       await router.replace('/m/shop')
     }
   }
 }
 
-bootstrapTelegram().finally(async () => {
-  await syncTelegramEntryRoute()
-  app.mount('#app')
-})
+async function bootstrapGuest() {
+  // 非 Telegram 环境且未登录时，自动以游客身份登录
+  if (isTelegramMiniApp()) return
+  const userStore = useUserStore()
+  if (userStore.isLoggedIn) return
+  try {
+    await userStore.guestLogin()
+  } catch (e) {
+    console.warn('游客登录失败:', e)
+  }
+}
+
+bootstrapTelegram()
+  .then(bootstrapGuest)
+  .finally(async () => {
+    await syncTelegramEntryRoute()
+    app.mount('#app')
+  })
